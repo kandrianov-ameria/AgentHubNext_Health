@@ -1,0 +1,177 @@
+"""
+Regenerate .env from the hardcoded constants in agent-hub-backend.
+
+Run this ONLY when a credential in the application source has been rotated.
+Normal test runs never touch the repository - they read .env and suite.env.
+
+    python scripts/refresh_env.py [path-to-agent-hub-backend]
+
+What it writes:
+  .env       the credentials only (gitignored). Values already set there for the
+             optional TWO_D_TO_*_BASIC_AUTH keys are kept.
+  suite.env  the base URLs are compared with the source; a URL that changed in
+             the source is updated in place (suite.env is committed, so the
+             change shows up in git). Nothing else in suite.env is touched.
+"""
+import re
+import sys
+from pathlib import Path
+
+DEFAULT_REPO = Path(r"D:\MAVERICK\_AgentHubNext\agent-hub-backend")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+RCM = "src/AgentHub/RemoteConfiguration/RemoteConfigurationManager.cs"
+ITS = "src/Ameria.LlmExecutionEngine/Services/ImageTo3DAgentSettings.cs"
+GLB = "src/AgentHub/Global.cs"
+
+SECRETS = {
+    "AIHUB_WIN_TOKEN":
+        (RCM, r'WindowsApiToken\s*=\s*"(?:Bearer\s+)?([^"]+)"'),
+    "STARKIT_API_KEY":
+        (ITS, r'MavStarkitApiKey\s*\{\s*get;\s*set;\s*\}\s*=\s*\r?\n?\s*"([^"]+)"'),
+    "AIHUB_DEVICE_MAPPING_TOKEN":
+        (ITS, r'DeviceMappingBearerToken\s*\{\s*get;\s*set;\s*\}\s*=\s*\r?\n?\s*"([^"]+)"'),
+    "SEQ_API_KEY":
+        (GLB, r'WriteTo\.Seq\(\s*"[^"]+"\s*,\s*apiKey:\s*"([^"]+)"'),
+}
+
+URLS = {
+    "AIHUB_SERVICE_BASE_URL":
+        (RCM, r'OperatingSystem\.IsWindows\(\)\s*\r?\n?\s*\?\s*"([^"]+)"'),
+    "MAV_STARKIT_BASE_URL":
+        (ITS, r'MavStarkitApiBaseUrl\s*\{\s*get;\s*set;\s*\}\s*=\s*\r?\n?\s*"([^"]+)"'),
+    "TWO_D_TO_3D_BASE_URL":
+        (ITS, r'TwoDToThreeDBaseUrl\s*\{\s*get;\s*set;\s*\}\s*=\s*\r?\n?\s*"([^"]+)"'),
+    "TWO_D_TO_VIDEO_BASE_URL":
+        (ITS, r'\?\?\s*"(https://[^"]*2d-to-video[^"]*)"'),
+    "DEVICE_MAPPING_BASE_URL":
+        (ITS, r'DeviceMappingBaseUrl\s*\{\s*get;\s*set;\s*\}\s*=\s*\r?\n?\s*"([^"]+)"'),
+    "SEQ_BASE_URL":
+        (GLB, r'WriteTo\.Seq\(\s*"([^"]+)"'),
+}
+
+
+def extract(repo: Path, table: dict) -> dict:
+    out, missing = {}, []
+    cache = {}
+    for name, (rel, pattern) in table.items():
+        path = repo / rel
+        if rel not in cache:
+            if not path.exists():
+                missing.append(f"{name}: file not found - {rel}")
+                continue
+            cache[rel] = path.read_text(encoding="utf-8-sig", errors="replace")
+        m = re.search(pattern, cache[rel])
+        if not m:
+            missing.append(f"{name}: pattern did not match in {rel}")
+            continue
+        out[name] = m.group(1).strip()
+    if missing:
+        print("EXTRACTION PROBLEMS:", *missing, sep="\n  ")
+    return out
+
+
+def mask(v: str) -> str:
+    return f"{'*' * 8}{v[-4:]}" if len(v) > 8 else "*" * len(v)
+
+
+OPTIONAL = ["TWO_D_TO_3D_BASIC_AUTH", "TWO_D_TO_VIDEO_BASIC_AUTH"]
+
+
+def read_env_file(path: Path) -> dict:
+    out = {}
+    if path.exists():
+        for line in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                out[k.strip()] = v.strip()
+    return out
+
+
+def update_suite_urls(urls: dict) -> list:
+    """Set changed base URLs in suite.env in place. Returns (name, old, new) per change."""
+    path = PROJECT_ROOT / "suite.env"
+    if not path.exists():
+        print(f"\nsuite.env not found at {path} - restore it from the repository.")
+        return []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    changes, seen = [], set()
+    for i, line in enumerate(lines):
+        k, sep, v = line.partition("=")
+        k = k.strip()
+        if sep and k in urls and not line.lstrip().startswith("#"):
+            seen.add(k)
+            if v.strip() != urls[k]:
+                changes.append((k, v.strip(), urls[k]))
+                lines[i] = f"{k}={urls[k]}"
+    for k in urls:
+        if k not in seen:
+            changes.append((k, "(missing)", urls[k]))
+            lines.append(f"{k}={urls[k]}")
+    if changes:
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return changes
+
+
+def main() -> int:
+    repo = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_REPO
+    if not repo.exists():
+        print(f"Repository not found: {repo}")
+        return 2
+
+    secrets = extract(repo, SECRETS)
+    urls = extract(repo, URLS)
+
+    if len(secrets) != len(SECRETS):
+        print("\nRefusing to write an incomplete .env. "
+              "A pattern that stopped matching usually means the declaration "
+              "was refactored, or the authentication scheme changed. "
+              "Check the file before editing the pattern.")
+        return 1
+
+    env_path = PROJECT_ROOT / ".env"
+    kept = read_env_file(env_path)
+    lines = [
+        "# AgentHubNext health suite - credentials",
+        "# GENERATED by scripts/refresh_env.py from the constants hardcoded in",
+        "# agent-hub-backend. Re-run that script only after a credential rotation.",
+        "#",
+        "# THIS FILE CONTAINS LIVE PRODUCTION CREDENTIALS. It is gitignored.",
+        "# Do not commit it, paste it, or attach it to a ticket.",
+        "# Base URLs, the environment name and other non-secret settings are in suite.env.",
+        "",
+        "# ---- credentials (from RemoteConfigurationManager.cs,",
+        "#      ImageTo3DAgentSettings.cs, Global.cs) --------------------------",
+    ]
+    for k in SECRETS:
+        lines.append(f"{k}={secrets[k]}")
+    lines += [
+        "",
+        "# ---- optional -------------------------------------------------------",
+        "# 2d-to-3d has no credentials in source (auth disabled by default).",
+        "# 2d-to-video reads these from the environment; empty means no auth header.",
+    ]
+    for k in OPTIONAL:
+        lines.append(f"{k}={kept.get(k, '')}")
+    lines.append("")
+    env_path.write_text("\n".join(lines), encoding="utf-8")
+
+    print(f"\nWrote {env_path}")
+    print("\n  credentials (masked):")
+    for k in SECRETS:
+        print(f"    {k:<28} {mask(secrets[k])}")
+    for k in OPTIONAL:
+        print(f"    {k:<28} {'(kept, ' + mask(kept[k]) + ')' if kept.get(k) else '(empty)'}")
+
+    changes = update_suite_urls(urls)
+    print("\n  base URLs in suite.env:")
+    if not changes:
+        print("    unchanged - they match the source")
+    for k, old, new in changes:
+        print(f"    {k:<28} {old} -> {new}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

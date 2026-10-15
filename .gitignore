@@ -1,0 +1,14 @@
+# Never commit the generated credential file
+.env
+.env.*
+!.env.example
+
+# Local environment and output
+# remote_config/ holds the downloaded configuration, which contains live credentials
+remote_config/
+logs/
+.venv/
+results/
+__pycache__/
+*.py[cod]
+.pytest_cache/
