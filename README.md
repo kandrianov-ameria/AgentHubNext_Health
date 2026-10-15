@@ -37,7 +37,10 @@ That is all. You do not need to install anything else by hand.
 
 ### First run on a new PC
 
-The suite needs a settings file called `.env` with addresses and passwords. It is not in this repository, on purpose, because it holds live credentials.
+The suite reads its settings from two files:
+
+- `suite.env` holds the addresses of the services, the environment to test (QAS by default), and timeouts. It has no passwords and is part of this repository, so you can read and change it.
+- `.env` holds the passwords. It is not in this repository, on purpose, because it holds live credentials.
 
 On the first run, `run_tests.bat` creates it automatically by reading the AgentHubNext source code. It looks for that code in `D:\MAVERICK\_AgentHubNext\agent-hub-backend`. If your copy is somewhere else, open a command prompt in this folder and run:
 
@@ -104,7 +107,8 @@ Nothing is generated (no 3D, no video) unless you add `--live`.
 | `results\result.html` | The latest report. Replaced on every run. | No |
 | `logs\<date>-<time>\` | Logs of each run. Only the newest five runs are kept. | No |
 | `remote_config\<environment>\` | The settings the app downloaded, saved as a fallback in case the next download fails. Contains live credentials. | No |
-| `.env` | Addresses and passwords. | No |
+| `suite.env` | Service addresses, environment name, timeouts. No passwords. | Yes |
+| `.env` | Passwords only. | No |
 
 Everything marked "No" stays on your PC. The `.gitignore` file makes sure it is never uploaded. Do not share these files by other means either.
 
@@ -116,7 +120,11 @@ Some passwords are built into the AgentHubNext app. When the developers change o
 .venv\Scripts\python scripts\refresh_env.py
 ```
 
-Normal runs never read the app's source code, only `.env`.
+Normal runs never read the app's source code, only `.env` and `suite.env`. The same command also checks the service addresses in `suite.env` against the app's source code and updates any that changed.
+
+## Changing the environment or an address
+
+Open `suite.env` in any text editor. To test another environment every time, change `AGENTHUB_ENV=QAS` to `DEV`, `STG` or `PRD`. Service addresses and timeouts are in the same file, each with a short comment.
 
 ## For technical readers
 
@@ -128,7 +136,7 @@ Normal runs never read the app's source code, only `.env`.
 
 ### How a run works
 
-1. `run_tests.bat` creates `.venv` if needed, installs dependencies, creates `.env` if missing, then runs `python -m agenthub_health`.
+1. `run_tests.bat` creates `.venv` if needed, installs dependencies, creates `.env` if missing, then runs `python -m agenthub_health`. Settings come from a real environment variable first, then `.env`, then `suite.env`.
 2. The suite downloads the remote configuration exactly as AgentHubNext does at start-up: the agent, tool, MCP and LLM provider lists, and the pat-config of the environment. All checks use this one download.
 3. A successful download is saved to `remote_config\<ENV>\`. If a download fails, the checks use the copy from the latest successful run, and the report says so.
 4. pytest runs the checks in `tests\`. Checks marked `live` run only with `--live`.
@@ -150,9 +158,10 @@ Normal runs never read the app's source code, only `.env`.
 | `agenthub_health\` | The suite's own code: configuration download, report, log handling, masking of secrets. |
 | `tests\` | The checks, one file per area (`test_00_setup.py` to `test_90_live_generation.py`). |
 | `tests\assets\` | Small sample image and audio files sent to the services. Not secret. |
-| `scripts\refresh_env.py` | Creates `.env` from the AgentHubNext source code. |
+| `suite.env` | Non-secret settings: environment, service addresses, timeouts. |
+| `scripts\refresh_env.py` | Creates `.env` from the AgentHubNext source code and keeps the addresses in `suite.env` current. |
 | `scripts\mock_aihub.py` | A local fake of the configuration service, for testing the suite itself. |
-| `.env.example` | The list of settings `.env` needs, with no values. |
+| `.env.example` | The list of credentials `.env` needs, with no values. |
 | `CLAUDE.md` | Detailed notes on how the app uses each service and why each check exists. |
 
 ### Services the app does not use
