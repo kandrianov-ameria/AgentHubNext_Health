@@ -14,25 +14,51 @@ newest five run folders are kept.
 from __future__ import annotations
 
 import os
+import re
+import subprocess
 import sys
 import time
 import webbrowser
 
 
+def _windows_default_browser() -> str | None:
+    """Path of the executable behind the default browser's http handler, read from the registry.
+    Returns None when it cannot be found. Launching it directly avoids relying on the shell."""
+    import winreg
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        try:
+            with winreg.OpenKey(hive, r"Software\Microsoft\Windows\Shell\Associations"
+                                      r"\UrlAssociations\http\UserChoice") as key:
+                prog_id = winreg.QueryValueEx(key, "ProgId")[0]
+            with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, rf"{prog_id}\shell\open\command") as key:
+                command = winreg.QueryValueEx(key, "")[0]
+        except OSError:
+            continue
+        match = re.match(r'\s*"([^"]+\.exe)"|\s*(\S+\.exe)', command, re.IGNORECASE)
+        if match:
+            path = match.group(1) or match.group(2)
+            if os.path.isfile(path):
+                return path
+    return None
+
+
 def open_report(report) -> bool:
-    """Open the report in the default web browser. On Windows the file is handed to the shell
-    (os.startfile), which opens it with the program registered for .html - the default browser.
-    Elsewhere, and if that fails, Python's webbrowser module is used. The outcome is logged."""
+    """Send the report to the default web browser. On Windows the browser executable is started
+    directly with the report's file:// address; if that is not possible, the file is handed to the
+    shell (os.startfile), then Python's webbrowser module is tried. os.startfile and webbrowser
+    return no window status, so the log says the file was handed over, not that a window appeared."""
     from . import runlog
     attempts = []
     if sys.platform.startswith("win"):
+        attempts.append(("default browser", lambda: _start_browser(report)))
         attempts.append(("os.startfile", lambda: os.startfile(str(report))))  # noqa: S606
     attempts.append(("webbrowser", lambda: webbrowser.open(report.as_uri(), new=2)))
     for name, attempt in attempts:
         try:
             if attempt() is False:
                 raise OSError("no browser could be started")
-            runlog.log.info("Report opened in the default browser (%s)", name)
+            runlog.log.info("Report handed to %s: %s. Check that a browser window appeared.",
+                            name, report)
             return True
         except Exception as exc:  # noqa: BLE001 - try the next way
             runlog.log.warning("Could not open the report with %s: %s", name, exc)
@@ -40,6 +66,18 @@ def open_report(report) -> bool:
     print(msg)
     runlog.console_line(msg)
     return False
+
+
+def _start_browser(report):
+    """Start the default browser executable on the report. Raises OSError if none is found."""
+    from . import runlog
+    browser = _windows_default_browser()
+    if browser is None:
+        raise OSError("the default browser executable was not found in the registry")
+    proc = subprocess.Popen([browser, report.as_uri()], stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    runlog.log.info("Started %s (pid %s)", browser, proc.pid)
+    return True
 
 
 def main(argv: list[str]) -> int:

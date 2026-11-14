@@ -51,10 +51,10 @@ copy /y requirements.txt "%STAMP%" >nul
 
 :envfile
 if exist ".env" goto :run
-echo [setup] .env not found - generating it once from the agent-hub-backend repository ...
+echo [setup] .env not found - generating it once from secrets.local.txt in the agent-hub-backend repository ...
 "%PY%" scripts\refresh_env.py
 if errorlevel 1 (
-  echo [setup] Could not create .env. Run scripts\refresh_env.py with the repository path as argument.
+  echo [setup] Could not create .env. Run scripts\refresh_env.py with the repository path as argument, and check that secrets.local.txt exists there.
   exit /b 2
 )
 

@@ -42,10 +42,11 @@ The suite reads its settings from two files:
 - `suite.env` holds the addresses of the services, the environment to test (QAS by default), and timeouts. It has no passwords and is part of this repository, so you can read and change it.
 - `.env` holds the passwords. It is not in this repository, on purpose, because it holds live credentials.
 
-On the first run, `run_tests.bat` creates it automatically by reading the AgentHubNext source code. It looks for that code in `D:\MAVERICK\_AgentHubNext\agent-hub-backend`. If your copy is somewhere else, open a command prompt in this folder and run:
+On the first run, `run_tests.bat` creates it automatically from `secrets.local.txt`, the local, git-ignored build secrets file in the AgentHubNext repository (the app no longer has credentials in its source). It looks in `D:\MAVERICK\_AgentHubNext\agent-hub-backend`. If your copy is somewhere else, or the file is elsewhere, open a command prompt in this folder and run:
 
 ```
 .venv\Scripts\python scripts\refresh_env.py C:\path\to\agent-hub-backend
+.venv\Scripts\python scripts\refresh_env.py C:\path\to\agent-hub-backend --secrets C:\path\to\secrets.local.txt
 ```
 
 Then double-click `run_tests.bat` again.
@@ -114,13 +115,13 @@ Everything marked "No" stays on your PC. The `.gitignore` file makes sure it is 
 
 ## When a password changes
 
-Some passwords are built into the AgentHubNext app. When the developers change one, update this suite once:
+Some passwords are built into the AgentHubNext app when it is compiled. They come from `secrets.local.txt`, a local file in the AgentHubNext repository that is never uploaded to git. When the developers change one, put the new value in that file (ask the team lead for it) and update this suite once:
 
 ```
 .venv\Scripts\python scripts\refresh_env.py
 ```
 
-Normal runs never read the app's source code, only `.env` and `suite.env`. The same command also checks the service addresses in `suite.env` against the app's source code and updates any that changed.
+Normal runs never read the app's source code or secrets file, only `.env` and `suite.env`. The same command also checks the service addresses in `suite.env` against the app's source code and updates any that changed.
 
 ## Changing the environment or an address
 
@@ -159,7 +160,7 @@ Open `suite.env` in any text editor. To test another environment every time, cha
 | `tests\` | The checks, one file per area (`test_00_setup.py` to `test_90_live_generation.py`). |
 | `tests\assets\` | Small sample image and audio files sent to the services. Not secret. |
 | `suite.env` | Non-secret settings: environment, service addresses, timeouts. |
-| `scripts\refresh_env.py` | Creates `.env` from the AgentHubNext source code and keeps the addresses in `suite.env` current. |
+| `scripts\refresh_env.py` | Creates `.env` from the AgentHubNext build secrets file (`secrets.local.txt`) and keeps the addresses in `suite.env` current. |
 | `scripts\mock_aihub.py` | A local fake of the configuration service, for testing the suite itself. |
 | `.env.example` | The list of credentials `.env` needs, with no values. |
 | `CLAUDE.md` | Detailed notes on how the app uses each service and why each check exists. |

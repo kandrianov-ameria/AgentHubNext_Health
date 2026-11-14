@@ -1,10 +1,16 @@
 """
-Regenerate .env from the hardcoded constants in agent-hub-backend.
+Regenerate .env from the build secrets of agent-hub-backend.
 
-Run this ONLY when a credential in the application source has been rotated.
-Normal test runs never touch the repository - they read .env and suite.env.
+Since AgentHubNext 4.0.64 the credentials are no longer hardcoded in the source.
+The app compiles them in from the developer's local, git-ignored
+`secrets.local.txt` in the repository root (build/Secrets.targets,
+secrets.local.example.txt). This script reads that same file.
+
+Run this ONLY when a credential has been rotated. Normal test runs never touch
+the repository - they read .env and suite.env.
 
     python scripts/refresh_env.py [path-to-agent-hub-backend]
+    python scripts/refresh_env.py [path-to-agent-hub-backend] --secrets path\to\secrets.local.txt
 
 What it writes:
   .env       the credentials only (gitignored). Values already set there for the
@@ -12,6 +18,10 @@ What it writes:
   suite.env  the base URLs are compared with the source; a URL that changed in
              the source is updated in place (suite.env is committed, so the
              change shows up in git). Nothing else in suite.env is touched.
+
+It refuses to write .env when any of the four values is missing, empty or still
+the build placeholder (__AGENTHUB_SECRET_<NAME>__), so a half-filled
+secrets.local.txt can never replace a working .env.
 """
 import re
 import sys
@@ -24,16 +34,25 @@ RCM = "src/AgentHub/RemoteConfiguration/RemoteConfigurationManager.cs"
 ITS = "src/Ameria.LlmExecutionEngine/Services/ImageTo3DAgentSettings.cs"
 GLB = "src/AgentHub/Global.cs"
 
+SECRETS_FILE_NAME = "secrets.local.txt"
+
+# .env key -> placeholder name in secrets.local.txt (BuildSecret items in
+# src/AgentHub/AgentHub.csproj and src/Ameria.LlmExecutionEngine/Ameria.LlmExecutionEngine.csproj).
 SECRETS = {
-    "AIHUB_WIN_TOKEN":
-        (RCM, r'WindowsApiToken\s*=\s*"(?:Bearer\s+)?([^"]+)"'),
-    "STARKIT_API_KEY":
-        (ITS, r'MavStarkitApiKey\s*\{\s*get;\s*set;\s*\}\s*=\s*\r?\n?\s*"([^"]+)"'),
-    "AIHUB_DEVICE_MAPPING_TOKEN":
-        (ITS, r'DeviceMappingBearerToken\s*\{\s*get;\s*set;\s*\}\s*=\s*\r?\n?\s*"([^"]+)"'),
-    "SEQ_API_KEY":
-        (GLB, r'WriteTo\.Seq\(\s*"[^"]+"\s*,\s*apiKey:\s*"([^"]+)"'),
+    # RemoteConfigurationManager.WindowsApiToken. The template says the value is the full
+    # Authorization header ("Bearer <id>|<token>"); the suite adds "Bearer " itself, so a
+    # leading "Bearer " is removed here.
+    "AIHUB_WIN_TOKEN": "AIHUB_SERVICE_AUTH_WINDOWS",
+    # ImageTo3DAgentSettings.MavStarkitApiKey (X-API-Key)
+    "STARKIT_API_KEY": "MAVSTARKIT_API_KEY",
+    # ImageTo3DAgentSettings.DeviceMappingBearerToken ("<id>|<token>", without "Bearer ")
+    "AIHUB_DEVICE_MAPPING_TOKEN": "DEVICE_MAPPING_BEARER_TOKEN",
+    # Global.cs WriteTo.Seq(apiKey: ...)
+    "SEQ_API_KEY": "AGENTHUB_SEQ_API_KEY",
 }
+# AIHUB_SERVICE_AUTH_MAC is also in the file; the Windows suite does not use it.
+
+PLACEHOLDER_PREFIX = "__AGENTHUB_SECRET_"
 
 URLS = {
     "AIHUB_SERVICE_BASE_URL":
@@ -68,6 +87,46 @@ def extract(repo: Path, table: dict) -> dict:
         out[name] = m.group(1).strip()
     if missing:
         print("EXTRACTION PROBLEMS:", *missing, sep="\n  ")
+    return out
+
+
+def read_secrets_file(path: Path) -> dict:
+    """Parse secrets.local.txt exactly as build/Secrets.targets does:
+    trimmed lines, '#' comments, name = text before the first '=', value = the rest."""
+    out = {}
+    for raw in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        eq = line.find("=")
+        if eq <= 0:
+            continue
+        out[line[:eq].strip()] = line[eq + 1:].strip()
+    return out
+
+
+def load_secrets(secrets_file: Path) -> dict:
+    """Return {.env key: value}; prints the problems and returns what it could read."""
+    if not secrets_file.exists():
+        print(f"SECRETS FILE NOT FOUND: {secrets_file}\n"
+              f"  AgentHubNext no longer keeps credentials in its source. Copy "
+              f"secrets.local.example.txt to {SECRETS_FILE_NAME} in the repository root and "
+              f"fill it in (ask the team lead for the values), or pass --secrets <path>.")
+        return {}
+    raw = read_secrets_file(secrets_file)
+    out, problems = {}, []
+    for env_key, name in SECRETS.items():
+        v = raw.get(name, "")
+        if not v:
+            problems.append(f"{env_key}: {name} is missing or empty in {secrets_file.name}")
+        elif v.startswith(PLACEHOLDER_PREFIX):
+            problems.append(f"{env_key}: {name} is still a build placeholder")
+        else:
+            if env_key == "AIHUB_WIN_TOKEN":
+                v = re.sub(r"^Bearer\s+", "", v, flags=re.IGNORECASE)
+            out[env_key] = v
+    if problems:
+        print("SECRETS PROBLEMS:", *problems, sep="\n  ")
     return out
 
 
@@ -114,35 +173,43 @@ def update_suite_urls(urls: dict) -> list:
     return changes
 
 
+def parse_args(argv: list) -> tuple:
+    repo, secrets_file, rest = None, None, list(argv)
+    while rest:
+        a = rest.pop(0)
+        if a == "--secrets" and rest:
+            secrets_file = Path(rest.pop(0))
+        elif repo is None:
+            repo = Path(a)
+    repo = repo or DEFAULT_REPO
+    return repo, secrets_file or (repo / SECRETS_FILE_NAME)
+
+
 def main() -> int:
-    repo = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_REPO
+    repo, secrets_file = parse_args(sys.argv[1:])
     if not repo.exists():
         print(f"Repository not found: {repo}")
         return 2
 
-    secrets = extract(repo, SECRETS)
+    secrets = load_secrets(secrets_file)
     urls = extract(repo, URLS)
 
     if len(secrets) != len(SECRETS):
-        print("\nRefusing to write an incomplete .env. "
-              "A pattern that stopped matching usually means the declaration "
-              "was refactored, or the authentication scheme changed. "
-              "Check the file before editing the pattern.")
+        print("\nRefusing to write an incomplete .env; the existing .env was not changed.")
         return 1
 
     env_path = PROJECT_ROOT / ".env"
     kept = read_env_file(env_path)
     lines = [
         "# AgentHubNext health suite - credentials",
-        "# GENERATED by scripts/refresh_env.py from the constants hardcoded in",
-        "# agent-hub-backend. Re-run that script only after a credential rotation.",
+        "# GENERATED by scripts/refresh_env.py from the build secrets file",
+        "# (secrets.local.txt) of agent-hub-backend. Re-run it only after a rotation.",
         "#",
         "# THIS FILE CONTAINS LIVE PRODUCTION CREDENTIALS. It is gitignored.",
         "# Do not commit it, paste it, or attach it to a ticket.",
         "# Base URLs, the environment name and other non-secret settings are in suite.env.",
         "",
-        "# ---- credentials (from RemoteConfigurationManager.cs,",
-        "#      ImageTo3DAgentSettings.cs, Global.cs) --------------------------",
+        "# ---- credentials (from secrets.local.txt) ---------------------------",
     ]
     for k in SECRETS:
         lines.append(f"{k}={secrets[k]}")
@@ -157,7 +224,7 @@ def main() -> int:
     lines.append("")
     env_path.write_text("\n".join(lines), encoding="utf-8")
 
-    print(f"\nWrote {env_path}")
+    print(f"\nWrote {env_path} (from {secrets_file})")
     print("\n  credentials (masked):")
     for k in SECRETS:
         print(f"    {k:<28} {mask(secrets[k])}")

@@ -11,6 +11,7 @@ import uuid
 
 import pytest
 
+from agenthub_health import settings
 from agenthub_health.probe import (ServiceFailure, call, contract, expect_ok, expect_refused,
                                    expect_status, need)
 
@@ -41,6 +42,7 @@ def test_file_list_with_shipped_key():
     expect_ok(res, "GET /files")
     contract(res, isinstance(res.json, dict) and isinstance(res.json.get("files"), list),
              "GET /files did not return {\"files\": [...]}, which MavStarkitApiClient.ListFilesAsync reads.")
+    # modified_at, device_id and environment are optional (docs/mav-starkit-api.md): older files report null.
 
 
 def test_file_list_refused_without_key():
@@ -95,11 +97,22 @@ def test_upload_download_delete_round_trip():
     name = f"qa-probe-{uuid.uuid4().hex[:10]}.glb"
     payload = b"glTF" + b"\x02\x00\x00\x00" + b"\x00" * 56
     url = f"{_base()}/files"
+    device_id, environment = "agenthub-health-probe", settings.env_name()
     try:
+        # device_id and environment are sent as MavStarkitApiClient.UploadFileAsync does since 4.0.58.
         up = call(SERVICE, "upload", "POST", url, headers=_key(),
                   files={"file": (name, payload, "model/gltf-binary")},
-                  data={"metadata": "agenthub-health probe - safe to delete", "overwrite": "false"})
+                  data={"metadata": "agenthub-health probe - safe to delete", "overwrite": "false",
+                        "device_id": device_id, "environment": environment})
         expect_status(up, [201, 200], "POST /files")
+        contract(up, isinstance(up.json, dict) and up.json.get("device_id") == device_id
+                 and up.json.get("environment") == environment,
+                 "POST /files did not echo the device_id / environment that were sent "
+                 "(docs/mav-starkit-api.md, 4.0.58).")
+        listed = next((f for f in _files() if f.get("name") == name), None)
+        contract(up, listed is not None and listed.get("device_id") == device_id
+                 and listed.get("environment") == environment,
+                 "GET /files did not report the stored device_id / environment for the uploaded probe file.")
         down = call(SERVICE, "download", "GET", f"{url}/{name}", headers=_key())
         expect_ok(down, f"GET /files/{name}")
         contract(down, down.content[:4] == b"glTF", "The downloaded file is not the bytes that were uploaded.")

@@ -80,6 +80,46 @@ def _kv(label: str, value: str, mono: bool = False) -> str:
     return f"<dt>{e(label)}</dt><dd{cls}>{e(value)}</dd>"
 
 
+COPY_BUTTON = '<button class="copy" type="button" onclick="copyCard(this)">Copy for Teams</button>'
+CHEVRON = '<span class="chev" aria-hidden="true">&#9656;</span>'
+
+
+def _check_list(records, kind: str, open_default: bool) -> str:
+    """One collapsible card per check: facts, what it means, and the requests it made."""
+    if not records:
+        return '<div class="empty">None.</div>'
+    cards = []
+    for i, r in enumerate(sorted(records, key=lambda r: (_area(r.module), r.nodeid)), 1):
+        if kind == "passed":
+            badge, title, text = _badge("passed", "success"), "Result", "Passed."
+        elif kind == "known":
+            badge = _badge("fixed - remove xfail", "success") if r.category == "known_fixed" else _badge("known", "info")
+            title, text = "Known issue", r.reason
+        else:
+            badge, title, text = _badge("skipped", "neutral"), "Why it was skipped", r.reason
+        facts = "".join([
+            _kv("Area", _area(r.module)),
+            _kv("Check", r.nodeid, mono=True),
+            _kv("Duration", _dur(r.duration)),
+            _kv("Latency", ", ".join(f'{p["latency_ms"]} ms' for p in r.probes)),
+        ])
+        requests = (f'<details class="block"><summary>Requests made</summary>{_probe_rows(r.probes)}</details>'
+                    if r.probes else "")
+        cards.append(f"""
+<details class="card check {kind}" id="{kind}-{i}"{' open' if open_default else ''}>
+  <summary class="card-h">{CHEVRON}
+    <div><div class="eyebrow">{e(_area(r.module))}</div><h3>{e(r.objective)}</h3></div>
+    <div class="badges">{badge}{COPY_BUTTON}</div>
+  </summary>
+  <div class="card-b">
+    <dl class="facts">{facts}</dl>
+    <div class="block"><h4>{title}</h4><p>{e(text)}</p></div>
+    {requests}
+  </div>
+</details>""")
+    return "".join(cards)
+
+
 # --- sections --------------------------------------------------------------------
 
 def _failed_section(records, empty: str = "No failed checks.") -> str:
@@ -118,11 +158,11 @@ def _failed_section(records, empty: str = "No failed checks.") -> str:
             + (f'<div class="t-id mono">{e(r.failure["location"])}</div>' if r.failure.get("location") else "")
             + "</td></tr>" for r in group)
         cards.append(f"""
-<article class="card cause{' noimpact' if f.get('no_effect_reason') else ''}" id="cause-{'u' if f.get('no_effect_reason') else ''}{i}">
-  <header class="card-h">
+<details class="card cause{' noimpact' if f.get('no_effect_reason') else ''}" id="cause-{'u' if f.get('no_effect_reason') else ''}{i}">
+  <summary class="card-h">{CHEVRON}
     <div><div class="eyebrow">Root cause {i}</div><h3>{e(f.get('title', 'Check failed'))}</h3></div>
-    <div class="badges">{head_badges}</div>
-  </header>
+    <div class="badges">{head_badges}{COPY_BUTTON}</div>
+  </summary>
   <div class="card-b">
     <dl class="facts">{facts}</dl>
     <div class="block"><h4>What happened</h4><p>{e(f.get('explanation', ''))}</p></div>
@@ -132,7 +172,7 @@ def _failed_section(records, empty: str = "No failed checks.") -> str:
     <h4 class="mt">Affected checks</h4>
     <table class="tbl"><thead><tr><th style="width:42%">Check</th><th>Observed</th></tr></thead><tbody>{affected}</tbody></table>
   </div>
-</article>""")
+</details>""")
     return "".join(cards)
 
 
@@ -149,39 +189,17 @@ def _suite_section(records, collection_issues) -> str:
         title = e(r.objective) if r else e(f.get("location", "Collection"))
         ident = f'<div class="t-id mono">{e(r.nodeid)} &middot; phase: {e(r.phase)}</div>' if r else ""
         cards.append(f"""
-<article class="card issue">
-  <header class="card-h"><div><div class="eyebrow">{e(f.get('type', 'Suite issue'))}</div><h3>{title}</h3>{ident}</div>
-  <div class="badges">{_badge('suite issue', 'warning')}</div></header>
+<details class="card issue">
+  <summary class="card-h">{CHEVRON}<div><div class="eyebrow">{e(f.get('type', 'Suite issue'))}</div><h3>{title}</h3>{ident}</div>
+  <div class="badges">{_badge('suite issue', 'warning')}{COPY_BUTTON}</div></summary>
   <div class="card-b">
     <div class="block"><h4>What this means</h4><p>{e(f.get('meaning', ''))}</p></div>
     <div class="block"><h4>Detail</h4><pre>{e(f.get('message', ''))}</pre></div>
     {f'<dl class="facts">{_kv("Location", f.get("location", ""), mono=True)}</dl>' if f.get('location') and r else ''}
     {f'<div class="block"><h4>How to fix</h4><p>{e(f["remediation"])}</p></div>' if f.get('remediation') else ''}
   </div>
-</article>""")
+</details>""")
     return "".join(cards)
-
-
-def _table_by_area(records, extra_col: str | None, extra_fn) -> str:
-    if not records:
-        return '<div class="empty">None.</div>'
-    by_area: dict[str, list] = defaultdict(list)
-    for r in records:
-        by_area[_area(r.module)].append(r)
-    out = []
-    for area in sorted(by_area, key=lambda a: list(AREAS.values()).index(a) if a in AREAS.values() else 99):
-        rows = []
-        for r in by_area[area]:
-            lat = ", ".join(f'{p["latency_ms"]} ms' for p in r.probes) or "-"
-            extra = f"<td>{extra_fn(r)}</td>" if extra_col else ""
-            rows.append(f'<tr><td><div class="t-obj">{e(r.objective)}</div><div class="t-id mono">{e(r.nodeid)}</div></td>'
-                        f'{extra}<td class="num">{lat}</td><td class="num">{_dur(r.duration)}</td></tr>')
-        head_extra = f"<th>{e(extra_col)}</th>" if extra_col else ""
-        out.append(f"""
-<div class="card area"><header class="card-h"><h3>{e(area)}</h3><div class="badges">{_badge(len(by_area[area]), 'neutral')}</div></header>
-<div class="card-b p0"><table class="tbl"><thead><tr><th>Check</th>{head_extra}<th class="num">Service latency</th><th class="num">Duration</th></tr></thead>
-<tbody>{''.join(rows)}</tbody></table></div></div>""")
-    return "".join(out)
 
 
 # --- page ------------------------------------------------------------------------
@@ -218,7 +236,7 @@ a{color:var(--c-primary);text-decoration:none}a:hover{color:var(--c-primary-dark
 .content{padding:48px 40px 64px;display:flex;flex-direction:column;gap:72px;flex:1;max-width:1240px;width:100%}
 section,.card{scroll-margin-top:88px}
 section>h2{margin:0 0 8px;font:400 36px/1.15 var(--f-display);letter-spacing:-.8px;color:var(--text);display:flex;align-items:center;gap:14px}
-section>p.sub{margin:0 0 28px;color:var(--muted);max-width:72ch;text-wrap:pretty}
+section>p.sub{margin:0 0 28px;color:var(--muted);text-wrap:pretty}
 .kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
 .kpi{background:var(--bg-sunken);border-radius:12px;padding:18px 18px 16px}
 .kpi .k{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1.5px}
@@ -232,7 +250,7 @@ section>p.sub{margin:0 0 28px;color:var(--muted);max-width:72ch;text-wrap:pretty
 .verdict.ok{background:var(--ok-soft);color:var(--ok)}.verdict.bad{background:var(--bad-soft);color:var(--bad)}.verdict.warn{background:var(--warn-soft);color:var(--warn)}
 .card{background:var(--bg-card);border:1px solid var(--line);border-radius:12px;margin-bottom:20px;overflow:hidden}
 .card-h{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:20px 24px;border-bottom:1px solid var(--line)}
-.card-h h3{margin:0;font:400 24px/1.2 var(--f-display);letter-spacing:-.3px;color:var(--text)}
+.card-h h3{margin:0;font:400 18px/1.2 var(--f-display);letter-spacing:-.3px;color:var(--text)}
 .cause .card-h{background:var(--bad-soft)}.cause.noimpact .card-h{background:var(--warn-soft)}.issue .card-h{background:var(--warn-soft)}
 .eyebrow{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
 .card-b{padding:24px}.card-b.p0{padding:0;overflow-x:auto}
@@ -273,15 +291,61 @@ pre{margin:8px 0 0;padding:16px;background:#181715;color:#e8e4da;border-radius:1
 .kpi.info .k,.kpi.info .v{color:#7FB0D6}.kpi.skip .k,.kpi.skip .v{color:#d99a80}
 #failed>h2{color:#c64545}#unused>h2{color:#d4a017}#suite>h2{color:#e8a55a}#passed>h2{color:#5db872}
 #known>h2{color:#7FB0D6}#skipped>h2,#skipped>h2 .badge{color:#d99a80}
+details.card>summary{list-style:none;cursor:pointer;color:var(--text);font:inherit}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary>div:first-of-type{flex:1;min-width:0}
+details.card:not([open])>summary{border-bottom:none}
+.chev{display:inline-block;color:var(--muted);font-size:12px;margin-top:6px;transition:transform .15s}
+details[open]>summary>.chev{transform:rotate(90deg)}
+.copy{border:1px solid var(--line);background:var(--bg-card);color:var(--text);border-radius:8px;padding:5px 12px;font:500 12px var(--f-body);cursor:pointer;white-space:nowrap}
+.copy:hover{border-color:var(--c-primary)}.copy.done{color:var(--ok);border-color:var(--ok)}
 """
 
-JS = """
+JS = r"""
 (function(){var root=document.documentElement,key='agenthub-health-theme';
 function set(t){root.setAttribute('data-theme',t);var b=document.getElementById('themeBtn');if(b)b.textContent=t==='dark'?'Light mode':'Dark mode';}
 var saved=null;try{saved=localStorage.getItem(key);}catch(e){}
 set(saved||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));
 window.toggleTheme=function(){var t=root.getAttribute('data-theme')==='dark'?'light':'dark';set(t);try{localStorage.setItem(key,t);}catch(e){}};
-window.toggleDetails=function(open){document.querySelectorAll('details').forEach(function(d){d.open=open;});};
+window.toggleDetails=function(open){document.querySelectorAll('details.block').forEach(function(d){d.open=open;});};
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function txt(el){return esc(el.textContent.replace(/\s+/g,' ').trim());}
+function cell(el){var parts=[];Array.from(el.childNodes).forEach(function(n){var t=n.textContent.replace(/\s+/g,' ').trim();if(t){parts.push(esc(t));}});return parts.join('<br>');}
+function tableHtml(t){var rows=Array.from(t.querySelectorAll('tr')).map(function(tr){return '<tr>'+Array.from(tr.children).map(function(td){var th=td.tagName==='TH';return (th?'<th>':'<td>')+cell(td)+(th?'</th>':'</td>');}).join('')+'</tr>';}).join('');return '<table border="1" cellpadding="4" cellspacing="0">'+rows+'</table>';}
+function walk(el,out){Array.from(el.children).forEach(function(c){
+  if(c.tagName==='SUMMARY'){return;}
+  if(c.tagName==='DL'){var kids=Array.from(c.children);for(var i=0;i+1<kids.length;i+=2){out.push('<p><b>'+txt(kids[i])+':</b> '+cell(kids[i+1])+'</p>');}}
+  else if(c.tagName==='H4'){out.push('<p><b>'+txt(c)+'</b></p>');}
+  else if(c.tagName==='P'){out.push('<p>'+txt(c)+'</p>');}
+  else if(c.tagName==='PRE'){out.push('<pre>'+esc(c.textContent)+'</pre>');}
+  else if(c.tagName==='TABLE'){out.push(tableHtml(c));}
+  else if(c.tagName==='DETAILS'){var s=c.querySelector('summary');if(s){out.push('<p><b>'+txt(s)+'</b></p>');}walk(c,out);}
+  else if(c.classList.contains('ev-label')){out.push('<p><i>'+txt(c)+'</i></p>');}
+  else {walk(c,out);}
+});}
+function teamsHtml(card){
+  var out=[];
+  var eyebrow=card.querySelector('summary .eyebrow');
+  if(eyebrow){out.push('<p><b>'+txt(eyebrow)+'</b></p>');}
+  out.push('<p><b>'+txt(card.querySelector('summary h3'))+'</b></p>');
+  var badges=Array.from(card.querySelectorAll('summary .badges .badge')).map(txt).join(' | ');
+  if(badges){out.push('<p>'+badges+'</p>');}
+  var body=card.querySelector(':scope > .card-b');
+  if(body){walk(body,out);}
+  return out.join('');
+}
+window.copyCard=function(btn){
+  var box=document.createElement('div');
+  box.contentEditable='true';box.style.position='fixed';box.style.left='-10000px';
+  box.innerHTML=teamsHtml(btn.closest('details'));
+  document.body.appendChild(box);
+  var range=document.createRange();range.selectNodeContents(box);
+  var sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);
+  var ok=false;try{ok=document.execCommand('copy');}catch(err){}
+  sel.removeAllRanges();box.remove();
+  btn.textContent=ok?'Copied':'Copy failed';btn.classList.toggle('done',ok);
+  setTimeout(function(){btn.textContent='Copy for Teams';btn.classList.remove('done');},1800);
+};
 })();
 """
 
@@ -334,9 +398,8 @@ def render(records, collection_issues, meta) -> str:
         f"{_badge(c['source'], 'success' if c['source'].startswith('downloaded') else 'warning' if c['source'].startswith('snapshot') else 'danger')}"
         f"</td></tr>" for c in meta.get("remote_config", []))
 
-    known_rows = _table_by_area(known + fixed, "Known issue", lambda r: (
-        (_badge("fixed - remove xfail", "success") + " " if r.category == "known_fixed" else "") + e(r.reason)))
-    skip_rows = _table_by_area(skipped, "Reason", lambda r: e(r.reason))
+    known_rows = _check_list(known + fixed, "known", open_default=False)
+    skip_rows = _check_list(skipped, "skipped", open_default=False)
 
     doc = f"""<!doctype html>
 <html lang="en" data-theme="light"><head><meta charset="utf-8">
@@ -408,7 +471,7 @@ def render(records, collection_issues, meta) -> str:
     <section id="passed">
       <h2>Passed checks {_badge(len(passed) + len(fixed), 'success')}</h2>
       <p class="sub">Grouped by area. Service latency is the time each request made by the check took.</p>
-      {_table_by_area(passed + fixed, None, None)}
+      {_check_list(passed + fixed, "passed", open_default=False)}
     </section>
 
     <section id="known">

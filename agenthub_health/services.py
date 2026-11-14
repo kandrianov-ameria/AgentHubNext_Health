@@ -18,14 +18,15 @@ class Service:
     rotation: str = ""     # what fixing a rejected credential takes
 
 
-REBUILD = ("The credential is a constant compiled into AgentHubNext, so replacing it needs a new "
-           "build, a new package and a rollout through Maverick Web Manager. After updating the "
-           "source, run scripts/refresh_env.py so this suite tests the new value.")
+REBUILD = ("The credential is compiled into AgentHubNext at build time from the build secrets file "
+           "(secrets.local.txt, build/Secrets.targets), so replacing it needs a new build, a new "
+           "package and a rollout through Maverick Web Manager. After updating secrets.local.txt, "
+           "run scripts/refresh_env.py so this suite tests the new value.")
 
 SERVICES: dict[str, Service] = {s.key: s for s in [
     Service(
         "aihub-service", "AI-Hub service (Windows)", "AI-Hub team / Maverick Config Manager",
-        "WindowsApiToken in src/AgentHub/RemoteConfiguration/RemoteConfigurationManager.cs",
+        "AIHUB_SERVICE_AUTH_WINDOWS build secret (RemoteConfigurationManager.WindowsApiToken in src/AgentHub/RemoteConfiguration/RemoteConfigurationManager.cs)",
         "RemoteConfigurationManager.LoadString throws on any non-2xx answer, so GetConfigurationAsync "
         "cannot download agents, tools, MCPs or LLM providers. For pat-config, RemoteSettingsManager "
         "falls back to the encrypted cache and logs a warning; with no cache the application shuts "
@@ -33,15 +34,15 @@ SERVICES: dict[str, Service] = {s.key: s for s in [
         REBUILD),
     Service(
         "device-mapping", "AI-Hub device mapping", "AI-Hub team",
-        "DeviceMappingBearerToken in src/Ameria.LlmExecutionEngine/Services/ImageTo3DAgentSettings.cs",
+        "DEVICE_MAPPING_BEARER_TOKEN build secret (ImageTo3DAgentSettings.DeviceMappingBearerToken in src/Ameria.LlmExecutionEngine/Services/ImageTo3DAgentSettings.cs)",
         "send_file_to_srd and the %online_srd_devices% prompt placeholder of ImageTo3DAgent and "
         "ImageToVideoAgent cannot resolve which Starkit controllers are paired with this AgentHub "
         "(DeviceMappingClient, ImageGenerationAgentToolsBase.GetSrdRoutingStateAsync).",
         REBUILD),
     Service(
         "log-upload", "AI-Hub log upload", "AI-Hub team",
-        "DeviceMappingBearerToken in src/Ameria.LlmExecutionEngine/Services/ImageTo3DAgentSettings.cs "
-        "(LogUploadService sends it to /api/logs-session, SessionImageUploader to /api/logs/session-image)",
+        "DEVICE_MAPPING_BEARER_TOKEN build secret (ImageTo3DAgentSettings.DeviceMappingBearerToken; "
+        "LogUploadService sends it to /api/logs-session, SessionImageUploader to /api/logs/session-image)",
         "Session log archives are not accepted - they stay in Temp/AgenHubLogs and are retried every "
         "5 minutes (README.md, Runtime layout). The screenshots and crops that AgentHubNext sends right "
         "after capture for online monitoring are lost: SessionImageUploader does not retry, and only the "
@@ -49,7 +50,7 @@ SERVICES: dict[str, Service] = {s.key: s for s in [
         REBUILD),
     Service(
         "mav-starkit-api", "mav-starkit-api", "mav-starkit-api developer",
-        "MavStarkitApiKey in src/Ameria.LlmExecutionEngine/Services/ImageTo3DAgentSettings.cs",
+        "MAVSTARKIT_API_KEY build secret (ImageTo3DAgentSettings.MavStarkitApiKey in src/Ameria.LlmExecutionEngine/Services/ImageTo3DAgentSettings.cs)",
         "generate_3d_object and generate_video cannot store their GLB/MP4 results, the existing-assets "
         "lists injected into the ImageTo3DAgent and ImageToVideoAgent prompts cannot be built, and "
         "send_file_to_srd cannot queue show_file commands for the Sony SRD.",
@@ -64,7 +65,7 @@ SERVICES: dict[str, Service] = {s.key: s for s in [
         "generate_video (ImageToVideoAgent) cannot create new videos."),
     Service(
         "seq", "Seq log server", "Infrastructure / logging",
-        "apiKey argument of WriteTo.Seq(...) in src/AgentHub/Global.cs",
+        "AGENTHUB_SEQ_API_KEY build secret (apiKey argument of WriteTo.Seq(...) in src/AgentHub/Global.cs)",
         "AgentHubNext's Serilog events do not reach central search in Seq; local log files are "
         "unaffected.",
         REBUILD),

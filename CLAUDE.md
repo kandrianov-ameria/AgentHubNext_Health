@@ -25,19 +25,23 @@ One command runs everything: `run_tests.bat`. The report is written to
 | What | Path |
 |---|---|
 | Suite root (this folder) | `D:\MAVERICK\_AgentHubNext\agenthub-health\` |
-| AgentHubNext repo (.NET 10, Windows build, version 4.0.55 at review time) | `D:\MAVERICK\_AgentHubNext\agent-hub-backend\` |
+| AgentHubNext repo (.NET 10, Windows build, version 4.0.69 at review time) | `D:\MAVERICK\_AgentHubNext\agent-hub-backend\` |
 | Copy of the Tavily image MCP server | `D:\MAVERICK\_AgentHubNext\agent-hub-backend\index.js` |
 | Tavily image MCP on a real Maverick | `C:\ProgramData\Maverick\Packages\<ENV>\Maverick-ai-hub-mcp-servers\<VER>\node-js-mcp\mcp-tavily-search-image\dist\index.js` |
 | Human view of pat-config | `https://aihub.ameriadev.de/ai-hub-service/admin/pat-config/<ENV>` |
 
 ## 3. Security rules (non-negotiable)
 
-- `.env` holds live credentials copied from constants hardcoded in the app.
+- `.env` holds live credentials copied from the app's build secrets file
+  (`secrets.local.txt` in the agent-hub-backend root; since 4.0.64 they are no longer
+  hardcoded in the source).
   - **Never** print, paste, commit or upload its values.
   - **Never** overwrite the user's `.env`. (Exception made once, at the user's
     request, in 1.3.0: non-secret keys moved out; backup `.env.backup-20261015`.)
   - Nothing secret goes into `suite.env`; it is committed.
-  - Only `scripts/refresh_env.py` creates it, and it writes file-to-file.
+  - Only `scripts/refresh_env.py` creates it, and it writes file-to-file. It refuses to write when
+    any value is missing or still a build placeholder, so a working `.env` is never replaced by a
+    half-filled one.
 - Every string that reaches the console or the report goes through
   `redact.text()`.
   - Register every secret found at runtime with `redact.register()`: LLM
@@ -51,7 +55,8 @@ One command runs everything: `run_tests.bat`. The report is written to
   pat-config cache with AES-GCM.)
 - Logs (`logs/`) go through `redact.text()` line by line, like the console.
 - `.gitignore` excludes `.env`, `.env.*` (except `.env.example`), `.venv/`,
-  `results/`, `remote_config/`, `logs/` and `__pycache__/`. `suite.env` is
+  `results/`, `remote_config/`, `logs/` and `__pycache__/`, followed by GitHub's
+  standard Python template (added by the merge of 2026-11-14). `suite.env` is
   committed on purpose.
 - Security note found in the SAM3 service README: a real `HF_TOKEN` was once
   hardcoded in its `docker-compose.yaml` and is still in git history, and the
@@ -63,17 +68,24 @@ Precedence, highest first: real environment variable (and `--env`), `.env`,
 `suite.env`, the default in `settings.py` (`load_dotenv(override=False)` is
 called for `.env` first, then `suite.env`).
 
-### Hardcoded in agent-hub-backend
+### Build secrets of agent-hub-backend (since 4.0.64)
 
-Changing any of these needs a rebuild and a rollout; after that, rerun
-`refresh_env.py`.
+The app no longer has credentials in its source (git history before 4.0.64 still does, and those
+old values were rotated). The developer keeps them in the git-ignored `secrets.local.txt` in the
+repository root (`NAME=value` per line; template `secrets.local.example.txt`);
+`build/Secrets.targets` compiles them into `BuildSecrets` at build time. Changing one needs a
+rebuild and a rollout; after that, update `secrets.local.txt` and rerun `refresh_env.py`, which reads
+that file (or `--secrets <path>`).
 
-| `.env` key | Source constant |
-|---|---|
-| `AIHUB_WIN_TOKEN` | `WindowsApiToken`, `src/AgentHub/RemoteConfiguration/RemoteConfigurationManager.cs` (line ~21) |
-| `STARKIT_API_KEY` | `MavStarkitApiKey`, `src/Ameria.LlmExecutionEngine/Services/ImageTo3DAgentSettings.cs` (~42) |
-| `AIHUB_DEVICE_MAPPING_TOKEN` | `DeviceMappingBearerToken`, same file (~50). Also used by LogUploadService for `/api/logs-session` and, since 4.0.55, by SessionImageUploader for `/api/logs/session-image`. |
-| `SEQ_API_KEY` | `apiKey` of `WriteTo.Seq(...)`, `src/AgentHub/Global.cs` (~86) |
+| `.env` key | `secrets.local.txt` name | Used by |
+|---|---|---|
+| `AIHUB_WIN_TOKEN` | `AIHUB_SERVICE_AUTH_WINDOWS` | `RemoteConfigurationManager.WindowsApiToken`. The template says the full Authorization header (`Bearer <id>|<token>`); the suite adds `Bearer ` itself, so `refresh_env.py` strips a leading `Bearer `. |
+| `STARKIT_API_KEY` | `MAVSTARKIT_API_KEY` | `ImageTo3DAgentSettings.MavStarkitApiKey` |
+| `AIHUB_DEVICE_MAPPING_TOKEN` | `DEVICE_MAPPING_BEARER_TOKEN` | `ImageTo3DAgentSettings.DeviceMappingBearerToken`. Also used by LogUploadService for `/api/logs-session` and by SessionImageUploader for `/api/logs/session-image`. |
+| `SEQ_API_KEY` | `AGENTHUB_SEQ_API_KEY` | `WriteTo.Seq(...)`, `src/AgentHub/Global.cs` |
+
+`AIHUB_SERVICE_AUTH_MAC` is also in that file; the Windows-only suite does not use it. Base URLs are
+still constants in the source and are still read from there.
 
 ### Optional `.env` keys
 
@@ -115,7 +127,8 @@ each run and are saved with it in `remote_config/<ENV>/`:
 
 - The endpoints are `/api/agents`, `/tools`, `/mcps`, `/llm-providers` and
   `/pat-config/<ENV>`, called with the Windows bearer token
-  (`ServiceAuthorizationHeader`, the constant already starts with `Bearer `)
+  (`ServiceAuthorizationHeader`; the value is the `AIHUB_SERVICE_AUTH_WINDOWS` build secret, meant to
+  include `Bearer `; the suite sends `Bearer <AIHUB_WIN_TOKEN>`)
   and a 20 s timeout.
 - Only pat-config has the environment in its URL. The four lists are the same
   for every environment; agents and tools are filtered by `category`, MCPs and
@@ -275,7 +288,7 @@ pytest.ini               pythonpath=., --strict-markers, --continue-on-collectio
                          markers: config, smoke, live
 .gitattributes           tests/assets/* binary; *.bat eol=crlf
 agenthub_health/
-  __init__.py            __version__ (bump on every change; currently 1.3.0)
+  __init__.py            __version__ (bump on every change; currently 1.4.0)
   __main__.py            opens the run logs, copies the console to console.log, runs pytest with the
                          plugin; -m "not live" unless --live; opens the report
   settings.py            paths, .env + suite.env loading, URL/secret var lists, fix_for() hints,
@@ -309,7 +322,7 @@ remote_config/<ENV>/     created at run time: agents.json, tools.json, mcps.json
                          pat-config.json (bodies exactly as downloaded) and snapshot.json
 logs/                    created at run time: one folder per run, plus setup.log from run_tests.bat
 scripts/
-  refresh_env.py         regenerates .env (credentials only) from the repo constants and updates
+  refresh_env.py         regenerates .env (credentials only) from the repo's secrets.local.txt and updates
                          changed base URLs in suite.env (only after a rotation)
   mock_aihub.py          local mock of the configuration service with fault scenarios (mode.txt)
   sam3_point_formats.py  one-off: posts SAM3 /predict in the README format and the Sam3Client format
@@ -339,7 +352,7 @@ is per subject, so one bad token is one root cause, not one per endpoint.
 | `test_20_llm_providers` | Every provider answers a minimal request with its key and model (parametrised when tests are collected) |
 | `test_21_speech` | Deepgram `/v1/projects`; Whisper in en, de and auto |
 | `test_22_segmentation` | Vision naming; SAM3 text; SAM3 point (marked no-effect) |
-| `test_30_mav_starkit` | Health; files with, without and with a wrong key; controllers online; metadata; stereo marker; upload/download/overwrite/delete round trip on `qa-probe-*.glb`; bad extension (SRD pairing checks removed in 1.2.0) |
+| `test_30_mav_starkit` | Health; files with, without and with a wrong key; controllers online; metadata; stereo marker; upload (with `device_id` + `environment`, echoed and listed)/download/overwrite/delete round trip on `qa-probe-*.glb`; bad extension (SRD pairing checks removed in 1.2.0) |
 | `test_31_generation_services` | 2d-to-3d and 2d-to-video: health; empty task returns 400; unknown file token returns 400; unknown task returns 404 |
 | `test_40_mcp_servers` | Definition is well formed (all servers); initialize handshake for `streamable_http` servers only (stdio servers run only on a Maverick machine and get no handshake check from 1.2.0). Servers no agent assigns are marked no-effect. |
 | `test_41_tavily_image_mcp` | stdio record passes `--api-key` and `--folder`; Tavily `/search` returns images. **One real, quota-using search per run.** |
@@ -640,6 +653,68 @@ passed). No credential from `.env` or pat-config appears in the logs or the repo
 - Confirms the open item of 1.2.3: `POST /api/logs/session-image` answers 401 without a token and 422
   with the token and no file, so both new checks pass.
 - Unchanged: SAM3 `/predict` HTTP 500, HTTP MCP `tavily-search-image` 503 (both no effect).
+
+
+### Version 1.3.5 (no real run yet)
+
+- Reviewed backend 4.0.55 to 4.0.59 (2026-10-28). Only mav-starkit-api changed: since 4.0.58
+  `MavStarkitApiClient.UploadFileAsync` also sends optional `device_id` and `environment` (from
+  `ImageTo3DAgentSettings`, set in `Program.cs`) on `POST /files`. `docs/mav-starkit-api.md` adds
+  `modified_at`, `device_id`, `environment` to `GET /files`, a `.json` sidecar removed by `DELETE`, and
+  `POST /files/{name}/rename`, `POST /files/{name}/device-info` and a public file-manager page at `/`.
+  The app calls none of the new endpoints, so the suite does not check them.
+- `test_30::test_upload_download_delete_round_trip` now sends `device_id=agenthub-health-probe` and
+  `environment=<AGENTHUB_ENV>` and checks that the upload response and `GET /files` return them.
+  Not known: whether the live server already runs the version that stores them; the first real run
+  must confirm it. A failure there would be a CONTRACT failure on mav-starkit-api.
+- No change in 4.0.56 to 4.0.59 to credentials, base URLs, remote configuration, pat-config, Whisper,
+  vision, SAM3, Deepgram, Seq, log upload or MCP code. 4.0.59 turns the "Hey Maverick" wake word off by
+  default (local only).
+- Versions 1.3.1 to 1.3.4 were made in the working copy without an entry here.
+
+### Version 1.4.0 (2026-11-14, no real run yet)
+
+- Backend 4.0.64 (commit 0b3927f, 2026-11-04) removed every committed credential from
+  agent-hub-backend. `WindowsApiToken`, `MacApiToken`, `MavStarkitApiKey`, `DeviceMappingBearerToken` and
+  the Seq `apiKey` are now `BuildSecrets.*`, compiled in from the local `secrets.local.txt`
+  (`build/Secrets.targets`, `secrets.local.example.txt`). Result: all four regexes of the old
+  `refresh_env.py` stopped matching, so it would have refused to write `.env` and a new PC
+  (`run_tests.bat` runs it when `.env` is missing) could not be set up.
+- Compared by hash only, none of the four values in the user's `secrets.local.txt` equals the value in the
+  suite's `.env` (lengths differ too). So the credentials were rotated and the current `.env` is
+  stale; the first real run will likely show AUTH_FAILED on aihub-service, mav-starkit-api,
+  device-mapping, log-upload and Seq until `refresh_env.py` is rerun. Not verified against the
+  servers: the session workspace cannot reach them.
+- `refresh_env.py` now reads `secrets.local.txt` (repo root, or `--secrets <path>`), parses it like
+  `Secrets.targets` does, strips a leading `Bearer ` from the Windows token, and refuses to write on a
+  missing, empty or placeholder value. Base URLs are still extracted from the source; all six patterns
+  still match and agree with `suite.env`. Tested on a copy with fake values: healthy, placeholder,
+  missing key, missing file, default location; `.env` unchanged on every refusal.
+- Texts updated: `services.py`, `settings.py`, `suite.env`, `.env.example`, `run_tests.bat`,
+  `README_GITHUB.md`, `README.md`, this file.
+- The suite's working copy was in an unfinished merge of the local initial commit (2873347) with
+  GitHub commit c7c8488 (2026-10-15, README wording). Resolved in the files on 2026-11-14:
+  `README.md` now equals `README_GITHUB.md` (the plain-language text from GitHub, plus the
+  `secrets.local.txt` wording); `.gitignore` keeps the suite rules first, then GitHub's standard
+  Python template. Checked with `git check-ignore`: `.env`, `.env.backup-20261015`, `remote_config/`,
+  `results/`, `logs/`, `.venv/` are ignored; no tracked file is ignored; no `.env*` or `remote_config`
+  file was ever committed. Still to do by the user: `git add README.md .gitignore` and commit (the
+  session shell cannot finish git operations: it cannot delete git's lock files).
+- 2026-11-14: the user ran the new `refresh_env.py`. All four `.env` values now equal the
+  `secrets.local.txt` values (checked by comparison only, never printed). No real suite run yet.
+- Noticed in the user's `secrets.local.txt`: the Windows service value has no `Bearer ` prefix, while the
+  template says it must be the full Authorization header and `RemoteConfigurationManager` sends the
+  constant as the header value unchanged. A build with that value probably sends no scheme. Not
+  confirmed.
+- Reviewed backend 4.0.59 to 4.0.69 (HEAD 9b0e542, 2026-11-09). No change to remote configuration DTOs,
+  pat-config, Whisper, vision, SAM3, Deepgram, log upload or MCP code. Other changes: secrets (above),
+  mav-starkit-api uploads send `device_id`/`environment` (already covered in 1.3.5), generation
+  clients report stages and support cancellation, background requests, HandPose, LLM error
+  classification and context recovery (`LlmClient`, `AgentLight`), and a `_frozen` flag in
+  ObjectSegmentationService. No endpoint or request-shape change found in `LlmClient.cs` by grepping its
+  diff for URLs and headers; not read line by line.
+- Not changed, known: `docs/mav-starkit-api.md` gained `POST /files/{name}/rename` and a public file manager
+  at `/`; the app calls neither.
 
 ## 10. SAM3 service reference (from its README, provided by the user)
 
