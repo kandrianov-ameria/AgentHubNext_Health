@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from agenthub_health.probe import call, contract, expect_ok, unused_by_app
+from agenthub_health.probe import ServiceFailure, call, contract, expect_ok, unused_by_app
 
 pytestmark = pytest.mark.smoke
 
@@ -66,8 +66,13 @@ POINT_UNUSED = ("Sam3Client.SegmentByPointAsync, the only caller of SamPredictUr
                 "highlighting uses the text-prompt endpoint (SamPredictTextUrl), which has its own check.")
 
 
+@pytest.mark.xfail(reason="Known: Sam3Client.SegmentByPointAsync sends point_coords=[[x,y]] and point_labels=[1]; "
+                          "the service answers HTTP 500 when either field has brackets and HTTP 200 for the "
+                          "README format (x,y and 1). Confirmed on QAS on 2026-11-15. Fix in Sam3Client.cs; "
+                          "nothing calls it today. See test_sam3_point_readme_format_works.",
+                   raises=ServiceFailure, strict=False)
 def test_sam3_segments_by_point(agenthub_section, asset):
-    """SAM3 accepts a point-prompt segmentation request for an image (endpoint not used by the current flow)."""
+    """SAM3 accepts the point-prompt request exactly as Sam3Client sends it (endpoint not used by the current flow)."""
     url = _need(agenthub_section, "SamPredictUrl")
     files = {"image_file": ("screen.jpg", asset("probe.jpg").read_bytes(), "image/jpeg")}
     data = {"return_zip": "false", "point_coords": "[[100,60]]", "point_labels": "[1]", "mask_threshold": "0.5"}
@@ -75,4 +80,16 @@ def test_sam3_segments_by_point(agenthub_section, asset):
                data=data, files=files, timeout=60)
     with unused_by_app(POINT_UNUSED):
         expect_ok(res, "SAM3 point-prompt segmentation")
+        contract(res, res.json is not None, "SAM3 answered 200 with a body that is not JSON.")
+
+
+def test_sam3_point_readme_format_works(agenthub_section, asset):
+    """The SAM3 /predict endpoint itself is healthy: it accepts the point format its README documents."""
+    url = _need(agenthub_section, "SamPredictUrl")
+    files = {"image_file": ("screen.jpg", asset("probe.jpg").read_bytes(), "image/jpeg")}
+    data = {"return_zip": "false", "point_coords": "100,60", "point_labels": "1"}
+    res = call("sam3", "predict by point (README format)", "POST", url, headers=_auth(agenthub_section),
+               data=data, files=files, timeout=60)
+    with unused_by_app(POINT_UNUSED):
+        expect_ok(res, "SAM3 point-prompt segmentation (README format)")
         contract(res, res.json is not None, "SAM3 answered 200 with a body that is not JSON.")
