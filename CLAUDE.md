@@ -288,7 +288,7 @@ pytest.ini               pythonpath=., --strict-markers, --continue-on-collectio
                          markers: config, smoke, live
 .gitattributes           tests/assets/* binary; *.bat eol=crlf
 agenthub_health/
-  __init__.py            __version__ (bump on every change; currently 1.4.0)
+  __init__.py            __version__ (bump on every change; currently 1.6.0)
   __main__.py            opens the run logs, copies the console to console.log, runs pytest with the
                          plugin; -m "not live" unless --live; opens the report
   settings.py            paths, .env + suite.env loading, URL/secret var lists, fix_for() hints,
@@ -317,7 +317,7 @@ agenthub_health/
   services.py            per-service facts: owner, where the credential lives, impact, rotation
   causes.py              explain(res) and status-aware fix(res, owner, service_fix)
   plugin.py              classifies outcomes, records evidence, renders the report at sessionfinish
-  report.py              Folio-style HTML
+  report.py              bento dashboard HTML (see section 7); also writes results/history.json
 remote_config/<ENV>/     created at run time: agents.json, tools.json, mcps.json, llm-providers.json,
                          pat-config.json (bodies exactly as downloaded) and snapshot.json
 logs/                    created at run time: one folder per run, plus setup.log from run_tests.bat
@@ -371,29 +371,55 @@ Orphan agents on QAS: `GoogleWorkspaceAgent`, `NanoBananaImageEditorAgent` and
 
 ## 7. Results presentation (`results/result.html`)
 
-- **Style:** the Folio design system, from the user's archive "HTML redesign in
-  Folio style" (1.1.1; replaced the Adminator style). `report.py` carries the
-  archive's `result-redesign.html` CSS verbatim, plus its inline section colours
-  moved into CSS rules at the end.
-- **Colours:** cream canvas `#faf9f5`, ink `#141413`, body `#3d3d3a`, muted
-  `#6c6a64`, coral accent `#cc785c` (pressed `#a9583e`), sunken `#efe9de`,
-  hairline `#e6dfd8`, dark footer and code blocks `#181715`. Section and KPI
-  accents: passed `#5db872`, failed `#c64545`, no app effect `#d4a017`, suite
-  issues `#E3B05A` (KPI) / `#e8a55a` (heading), known `#7FB0D6`, skipped
-  `#d99a80`, overview dot `#3C82DD`.
-- **Fonts:** Source Serif 4 (headings, KPI figures, verdict), Inter (text),
-  JetBrains Mono (code, counts, badges), from Google Fonts.
-- **Rules:** flat cards with a 1px hairline, 12px radius, no shadows, no
-  gradients.
-- **Dark mode:** toggled via `data-theme`. The section accent colours are
-  the same in both themes, as in the design.
-- **Sidebar order:** Overview, Passed, Failed, Failed with no app effect,
-  Suite issues, Known issues, Skipped, Run details. The page sections keep
-  their order (Failed first).
+- **Style (1.6.0):** NextUI / HeroUI tokens on the 1.5.0 bento layout, written in `report.py`
+  (CSS and JS inline, no build step, no script from outside). Only the fonts (Inter,
+  JetBrains Mono) come from Google Fonts; without them the page falls back to system fonts.
+- **Tokens and where they come from:** light values are from
+  `designsystems.one/design-systems/nextui` (a catalogue page titled "HeroUI Design System";
+  it says its values are "indicative, not canonical"): primary `#006fee`, secondary `#7828c8`,
+  foreground `#11181c`, background `#fff`, content2 `#f4f4f5`, border `#d4d4d8`, success
+  `#17c964`, warning `#f5a524`, danger `#f31260`, radii 8 / 12 / 14 px, medium shadow
+  `0 4px 12px rgba(0,0,0,.08)`, motion 250 ms ease, Inter 400-700. **Not on that page, filled
+  in from memory of the HeroUI docs and to be checked against heroui.com/docs/customization/colors:**
+  all dark values (background `#000`, cards `#18181b`, content2 `#27272a`, text `#ecedee`,
+  secondary `#9353d3`, primary text `#338ef7`, no shadow) and the darker text shades used in the light
+  theme for contrast (success `#12a150`, warning `#c4841d`, danger `#c20e4d`).
+- **Status colours:** passed = success, failed = danger, no app effect = warning, known = primary,
+  skipped = grey, suite issues = secondary purple (NextUI has no orange; the CSS name is `--suite`).
+  Variants are "flat" (a tint of the colour on the surface); the verdict icon is "solid".
+  No gradients, no glow. `data-verdict` on `<html>` picks the verdict tile colour.
+- **Theme:** Auto / Light / Dark button (system by default, saved in
+  `localStorage` key `agenthub-health-theme`).
+- **Icons:** every status has an icon as well as a colour (inline SVG sprite).
+- **Sidebar order = page order:** Overview, Failed, Failed with no app effect,
+  Suite issues, Known issues, Passed, Skipped, Run details. A scroll-spy marks the
+  section in view. Under 920 px the sidebar becomes a bottom bar.
+- **Sticky toolbar:** search (`/` or Ctrl+K), status filter, service filter chip,
+  Expand all / Collapse all, "Copy failures for Teams". The filter state is kept in
+  the page URL (`?status=`, `?q=`, `?service=`). Keys: `j`/`k` next/previous card,
+  `e` open or close it, `Esc` clears the search.
+- **Overview (bento):** verdict tile with links to the root causes, a segmented
+  donut, one clickable chip per status, a service health grid (one tile per service
+  key found in the probes; click filters the cards), "Changes since the last run",
+  and the five slowest requests drawn against `AGENTHUB_HEALTH_TIMEOUT` (amber above
+  half of it, same rule as `suite.log`, LLM and live checks excluded).
+- **Run history:** `results/history.json` (gitignored with `results/`) keeps the
+  check ids and categories of the last 10 runs per environment. It feeds the
+  badges "new" and "still failing - N runs" on failure cards, "fixed since last run"
+  on passed cards, and the changes tile. Nothing from responses is stored. A broken
+  or missing file only means "first run recorded".
+- **Kept on purpose:** the section categories and ids, collapsed `<details>` cards,
+  and the Teams copy. `copyCard` builds the Teams text from the card's DOM
+  (`summary .eyebrow`, `summary h3`, `summary .badges .badge`, then `.card-b`), so
+  those classes must not change. "Copy as Markdown" (end of every card) and "Copy
+  failures for Teams" reuse the same card structure.
+- **Passed checks** are grouped by area (collapsed `details.group`); each group
+  shows its count and request time. The cards inside are unchanged.
+- **Print:** all cards are opened for printing, navigation is hidden.
 
 ### Sections
 
-1. Overview (seven KPI cards and a verdict)
+1. Overview (verdict, donut, status chips, service health, changes, slowest requests)
 2. Failed checks
 3. Failed, no effect on the app
 4. Suite issues
@@ -733,3 +759,27 @@ passed). No credential from `.env` or pat-config appears in the logs or the repo
   - `GET /health`, which returns `{"status":"ok"}`
   - `GET /docs`
 - **Limits:** `MAX_UPLOAD_BYTES` defaults to 25 MiB; larger uploads get 413.
+
+### Version 1.5.0 (2026-11-15, no real run yet)
+
+- `report.py` rewritten: dark-first bento design, sticky search and filter toolbar, service health
+  grid, slowest requests, run history (`results/history.json`), "Copy failures for Teams",
+  "Copy as Markdown", keyboard navigation, scroll-spy, printable. Section 7 describes it.
+- Passed checks are grouped by area; the card markup that the Teams copy reads is unchanged.
+  Verified with synthetic records (`render()` called directly, never the real `.env` or services):
+  Teams text of a failed card equals the old format plus the "new" badge; Markdown copy; dark and light;
+  healthy and suite-issue verdicts; narrow width; filter by status and by search text.
+- Not verified: a real suite run (the first one writes the first history entry, so the changes tile
+  says "first run" until the second), Microsoft Teams paste, Edge and Safari (tested in Chrome only).
+- Sidebar order now follows the page order; before, Passed was listed second but shown fifth.
+- Suite issues are orange now; before they shared nearly the same gold as no-effect.
+
+### Version 1.6.0 (2026-11-15)
+
+- Restyled `report.py` with NextUI / HeroUI tokens (section 7, with what came from the page and what did not).
+  Layout, behaviour, ids, Teams copy and history are unchanged from 1.5.0; `results/history.json` is still read.
+- Real run after the change: QAS, 9.6 s, 106 checks, 100 passed, 3 failed (Seq 401, SAM3 `/predict` 500,
+  `tavily-search-image` 503, unchanged), 2 known, 1 skipped. Seen in a screenshot of the top of the
+  page only; not scrolled through, no Teams paste.
+- Suite issues changed from orange to purple (NextUI palette). The 1.5.0 look is kept as
+  `report.py.v1.5.0-bento.bak` in the session scratchpad only, not in the repository.
