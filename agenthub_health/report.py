@@ -28,7 +28,7 @@ import json
 from collections import OrderedDict, defaultdict
 from types import SimpleNamespace
 
-from . import redact, services, settings
+from . import redact, report_theme, services, settings
 
 AREAS = {
     "test_00_setup": "Suite setup",
@@ -1111,6 +1111,7 @@ def render(records, collection_issues, meta) -> str:
 </div>
 <nav class="bnav" aria-label="Sections">{bnav}</nav>
 </body></html>"""
+    doc = report_theme.apply(doc)
     settings.REPORT_FILE.write_text(doc, encoding="utf-8")
     _save_history(records, meta["environment"], meta["finished"], meta["suite_version"])
     return str(settings.REPORT_FILE)

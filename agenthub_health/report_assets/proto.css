@@ -1,0 +1,268 @@
+/* =====================================================================
+   PROTOTYPE LAYER - loaded after the report's own CSS.
+   Idea: shadcn/ui "zinc" tokens + aurora bento + floating glass shell,
+   animated with Motion (see proto.js). Same markup, same classes.
+   ===================================================================== */
+
+/* ---------- tokens (shadcn zinc, remapped onto the report's variables) ---------- */
+:root{
+  --radius:.75rem;--r-s:8px;--r-m:10px;--r-l:16px;
+  --f:"Geist","Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --fm:"Geist Mono","JetBrains Mono",ui-monospace,Consolas,monospace;
+  --bg:#fafafa;--surface:#ffffff;--surface-2:#f4f4f5;--line:#e4e4e7;--line-2:#d4d4d8;
+  --text:#09090b;--body:#3f3f46;--muted:#636368;
+  --accent:#18181b;--primary:#18181b;
+  --ok:#047857;--bad:#be123c;--warn:#b45309;--suite:#6d28d9;--info:#1d4ed8;--neu:#636368;
+  --ok-fill:#10b981;--bad-fill:#f43f5e;--warn-fill:#f59e0b;
+  --shadow:0 1px 2px rgba(9,9,11,.04),0 8px 24px -12px rgba(9,9,11,.10);
+  --ease:.2s cubic-bezier(.22,1,.36,1);--hdr:150px;
+  --glass:color-mix(in srgb,var(--surface) 72%,transparent);
+  --ring:color-mix(in srgb,var(--text) 55%,transparent);
+}
+html[data-theme=dark]{
+  --bg:#09090b;--surface:#111113;--surface-2:#1a1a1d;--line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);
+  --text:#fafafa;--body:#d4d4d8;--muted:#a1a1aa;
+  --accent:#fafafa;--primary:#fafafa;
+  --ok:#34d399;--bad:#fb7185;--warn:#fbbf24;--suite:#a78bfa;--info:#60a5fa;--neu:#a1a1aa;
+  --shadow:0 0 0 1px rgba(255,255,255,.02),0 12px 32px -16px rgba(0,0,0,.7);
+}
+html[data-verdict=bad]{--glow:var(--bad);--glow-fill:var(--bad-fill)}
+html[data-verdict=warn]{--glow:var(--warn);--glow-fill:var(--warn-fill)}
+html[data-verdict=ok]{--glow:var(--ok);--glow-fill:var(--ok-fill)}
+
+@property --ang{syntax:"<angle>";inherits:false;initial-value:0deg}
+
+body{background:var(--bg);font:14px/1.6 var(--f);letter-spacing:-.005em;font-feature-settings:"ss01","cv11"}
+a{color:var(--text);text-decoration-color:color-mix(in srgb,var(--text) 30%,transparent)}
+::selection{background:color-mix(in srgb,var(--glow-fill,#6366f1) 35%,transparent)}
+:focus-visible{outline:2px solid var(--ring);outline-offset:2px;border-radius:8px}
+
+/* ---------- ambient background: aurora + grain ---------- */
+body::before{content:"";position:fixed;inset:-20vmax;z-index:-2;pointer-events:none;
+  background:
+   radial-gradient(40vmax 32vmax at 12% 8%,color-mix(in srgb,var(--glow-fill) 20%,transparent),transparent 70%),
+   radial-gradient(36vmax 30vmax at 88% 4%,color-mix(in srgb,#6366f1 16%,transparent),transparent 70%),
+   radial-gradient(34vmax 28vmax at 70% 92%,color-mix(in srgb,#06b6d4 12%,transparent),transparent 70%);
+  filter:blur(24px);animation:drift 28s ease-in-out infinite alternate}
+html[data-theme=light] body::before{opacity:.75}
+@keyframes drift{to{transform:translate3d(-3vmax,2vmax,0) scale(1.06)}}
+body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.05;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
+
+/* scroll progress (driven by Motion scroll()) */
+.progress{position:fixed;inset:0 0 auto 0;height:2px;z-index:60;transform-origin:0 50%;transform:scaleX(0);
+  background:linear-gradient(90deg,var(--glow-fill),#6366f1,#06b6d4)}
+
+/* ---------- shell: floating glass rail + floating command island ---------- */
+.main{margin-left:0}
+@media (min-width:921px){
+  .main{margin-left:252px}
+  .side{inset:12px auto 12px 12px;width:228px;border:1px solid var(--line);border-radius:20px;padding:16px 12px;
+    background:var(--glass);backdrop-filter:blur(22px) saturate(1.6);box-shadow:var(--shadow)}
+}
+.brand{padding:4px 8px 14px;font:600 14.5px var(--f);letter-spacing:-.02em}
+.logo{width:30px;height:30px;border-radius:9px;font:700 14px var(--fm);color:var(--bg);
+  background:conic-gradient(from 210deg,var(--glow-fill),#6366f1,#06b6d4,var(--glow-fill));
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--text) 12%,transparent) inset,0 6px 16px -6px var(--glow-fill);
+  color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35)}
+.nav{position:relative}
+.nav .sec{font:500 11px var(--fm);letter-spacing:.08em;color:var(--muted);padding:14px 10px 6px}
+.nav a{position:relative;z-index:1;border-radius:10px;padding:7px 10px;font-weight:500;color:var(--body);transition:color var(--ease)}
+.nav a:hover{background:transparent;color:var(--text);text-decoration:none}
+.nav a.on{background:transparent}
+.nav a.on::before{display:none}
+.nav-pill{position:absolute;left:0;right:0;top:0;height:34px;z-index:0;border-radius:10px;pointer-events:none;
+  background:color-mix(in srgb,var(--text) 7%,transparent);
+  box-shadow:inset 0 0 0 1px var(--line)}
+.nav-pill::before{content:"";position:absolute;left:-2px;top:9px;bottom:9px;width:3px;border-radius:3px;background:var(--pc,var(--text))}
+.pill{font:500 11px var(--fm);border-radius:999px;background:color-mix(in srgb,var(--text) 6%,transparent);color:var(--muted)}
+.nav a.has .pill{background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--c)}
+.keys{font:400 11.5px/2 var(--fm);color:var(--muted);border-top:1px solid var(--line);padding:12px 8px 0;margin-top:auto}
+kbd{font:500 10.5px var(--fm);border:1px solid var(--line-2);border-bottom-width:2px;border-radius:6px;padding:0 5px;background:var(--surface);color:var(--muted)}
+
+.top{top:12px;margin:12px 28px 0;padding:12px 16px 12px;border:1px solid var(--line);border-radius:20px;
+  background:var(--glass);backdrop-filter:blur(22px) saturate(1.6);box-shadow:var(--shadow)}
+.top h1{font:600 17px/1.2 var(--f);letter-spacing:-.025em}
+.meta{font:400 12px var(--fm)}
+.content{padding:36px 36px 80px;gap:64px;max-width:1360px}
+.foot{padding:0 36px 40px;font:400 12px var(--fm);color:var(--muted)}
+
+/* ---------- shadcn Button / Input / Tabs / Badge ---------- */
+.btn,.copy{border:1px solid var(--line-2);background:var(--surface);color:var(--text);border-radius:10px;
+  font:500 12.5px var(--f);box-shadow:0 1px 0 rgba(9,9,11,.03);transition:background var(--ease),border-color var(--ease),color var(--ease)}
+.btn:hover,.copy:hover{background:var(--surface-2);border-color:var(--line-2)}
+.btn.primary{background:var(--text);color:var(--bg);border-color:var(--text)}
+.btn.primary:hover{background:color-mix(in srgb,var(--text) 86%,var(--bg))}
+.btn.done,.copy.done{background:color-mix(in srgb,var(--ok) 14%,var(--surface));color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
+.cmdk-btn{gap:10px;color:var(--muted)}
+.cmdk-btn kbd{margin-left:6px}
+
+.search input{height:36px;border-radius:10px;border:1px solid var(--line-2);background:color-mix(in srgb,var(--surface) 80%,transparent);
+  font:400 13px var(--f);box-shadow:0 1px 0 rgba(9,9,11,.03);transition:box-shadow var(--ease),border-color var(--ease)}
+.search input:focus{outline:none;border-color:var(--ring);box-shadow:0 0 0 3px color-mix(in srgb,var(--ring) 22%,transparent)}
+
+.seg{position:relative;gap:0;padding:3px;border-radius:12px;background:var(--surface-2);border:1px solid var(--line)}
+.seg button{position:relative;z-index:1;border-radius:9px;font:500 12.5px var(--f);transition:color var(--ease)}
+.seg button:hover{color:var(--text);background:transparent}
+.seg button b{font:500 11px var(--fm);opacity:.7}
+.seg.has-thumb button[aria-pressed=true]{background:transparent;box-shadow:none;color:var(--text)}
+.seg-thumb{position:absolute;z-index:0;top:3px;bottom:3px;left:0;width:0;border-radius:9px;background:var(--surface);
+  box-shadow:0 1px 2px rgba(9,9,11,.10),0 0 0 1px var(--line)}
+html[data-theme=dark] .seg-thumb{background:var(--surface-2);box-shadow:0 0 0 1px var(--line-2)}
+
+.badge{font:500 11px var(--fm);padding:2px 9px;border-radius:999px;border:1px solid transparent;letter-spacing:0}
+.badge-primary{background:var(--text);color:var(--bg)}
+.badge-success,.badge-danger,.badge-warning,.badge-suite,.badge-info,.badge-neutral{border-color:color-mix(in srgb,currentColor 22%,transparent)}
+
+/* ---------- section headings ---------- */
+section>h2{font:600 28px/1.15 var(--f);letter-spacing:-.035em;gap:12px}
+section>h2 .h-ico{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:17px;
+  color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c) 28%,transparent)}
+section>p.sub{max-width:72ch;color:var(--muted);margin:6px 0 20px}
+
+/* ---------- bento tiles ---------- */
+.bento{gap:14px}
+.tile{position:relative;border-radius:20px;padding:22px;background:var(--glass);border:1px solid var(--line);
+  backdrop-filter:blur(14px);box-shadow:var(--shadow);overflow:hidden;isolation:isolate}
+.tile>h3{font:500 11.5px var(--fm);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+/* cursor spotlight (--mx/--my set in proto.js) */
+.tile::after,.chip::after,.svc::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .3s;
+  background:radial-gradient(260px circle at var(--mx,50%) var(--my,50%),color-mix(in srgb,var(--text) 9%,transparent),transparent 65%)}
+.tile:hover::after,.chip:hover::after,.svc:hover::after{opacity:1}
+
+/* hero verdict: animated conic border */
+.t-verdict{background:color-mix(in srgb,var(--glow) 7%,var(--glass));border:1px solid transparent;
+  background:
+    linear-gradient(color-mix(in srgb,var(--glow) 7%,var(--surface)),color-mix(in srgb,var(--glow) 7%,var(--surface))) padding-box,
+    conic-gradient(from var(--ang),color-mix(in srgb,var(--glow-fill) 80%,transparent),transparent 30%,color-mix(in srgb,#6366f1 70%,transparent) 55%,transparent 80%,color-mix(in srgb,var(--glow-fill) 80%,transparent)) border-box;
+  animation:spin 9s linear infinite;padding:28px}
+@keyframes spin{to{--ang:360deg}}
+.t-verdict::before{content:"";position:absolute;z-index:-1;right:-60px;top:-80px;width:280px;height:280px;border-radius:50%;
+  background:radial-gradient(circle,color-mix(in srgb,var(--glow-fill) 38%,transparent),transparent 68%);filter:blur(8px)}
+.v-head{gap:18px}
+.v-ico{width:52px;height:52px;border-radius:16px;font-size:26px;color:#fff;
+  background:linear-gradient(145deg,color-mix(in srgb,var(--glow-fill) 100%,#fff 12%),var(--glow-fill));
+  box-shadow:0 10px 24px -8px var(--glow-fill),inset 0 1px 0 rgba(255,255,255,.35)}
+.v-head h2{margin:0;font:600 28px/1.1 var(--f);letter-spacing:-.04em;
+  background:linear-gradient(110deg,var(--text) 30%,color-mix(in srgb,var(--glow) 75%,var(--text)));-webkit-background-clip:text;background-clip:text;color:transparent}
+.v-head p{margin:6px 0 0;color:var(--body);max-width:60ch}
+.vc{border-radius:999px;padding:6px 12px 6px 10px;background:color-mix(in srgb,var(--c) 10%,var(--surface));
+  border:1px solid color-mix(in srgb,var(--c) 32%,transparent);transition:background var(--ease)}
+.vc:hover{background:color-mix(in srgb,var(--c) 18%,var(--surface));text-decoration:none}
+.vc .i{color:var(--c)}
+
+.t-ring{gap:12px}
+.donut{width:168px;filter:drop-shadow(0 6px 18px color-mix(in srgb,var(--glow-fill) 25%,transparent))}
+.donut .seg-c{stroke-width:11;stroke-linecap:round}
+.ring-sub{font:400 13px var(--fm);color:var(--muted)}
+.ring-sub b{color:var(--text);font-weight:600}
+
+.chips{gap:12px}
+.chip{position:relative;overflow:hidden;isolation:isolate;border-radius:16px;padding:14px 16px;background:var(--glass);backdrop-filter:blur(10px);
+  box-shadow:var(--shadow);transition:border-color var(--ease),background var(--ease),box-shadow var(--ease)}
+.chip:not(.zero){background:color-mix(in srgb,var(--c) 7%,var(--glass))}
+.chip .n{font:600 30px/1.1 var(--f);letter-spacing:-.04em;font-variant-numeric:tabular-nums;color:var(--text)}
+.chip .l{font:500 12px var(--f);color:var(--muted)}
+.chip .i{color:var(--c)}
+.chip[aria-pressed=true]{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 20%,transparent)}
+
+.svcs{gap:8px}
+.svc{position:relative;overflow:hidden;isolation:isolate;border-radius:14px;background:color-mix(in srgb,var(--surface-2) 70%,transparent);
+  transition:border-color var(--ease),background var(--ease)}
+.svc:hover{border-color:var(--line-2)}
+.svc-t{font:500 13px var(--f);color:var(--text)}
+.svc-m{font:400 11.5px/1.4 var(--fm);color:var(--muted);white-space:normal;overflow:visible;text-overflow:clip}
+.svc[aria-pressed=true]{border-color:var(--c);background:color-mix(in srgb,var(--c) 10%,var(--surface))}
+.svc.ok .svc-dot::before{content:"";position:absolute;inset:-3px;border-radius:50%;border:1px solid var(--c);opacity:.0;animation:ping 2.8s ease-out infinite}
+@keyframes ping{0%{transform:scale(.8);opacity:.55}80%,100%{transform:scale(1.5);opacity:0}}
+
+.lat li{font-size:12.5px}
+.l-b{height:6px;background:color-mix(in srgb,var(--text) 8%,transparent)}
+.l-b i{transform-origin:0 50%;background:linear-gradient(90deg,#6366f1,#06b6d4)}
+.lat li.slow .l-b i{background:linear-gradient(90deg,var(--warn-fill),#fb923c)}
+.l-stats b{font:600 22px/1.1 var(--f);letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--text)}
+.l-stats span{font:400 11.5px var(--fm);color:var(--muted)}
+.chg{border-radius:10px}
+
+/* ---------- cards (shadcn Card + Accordion) ---------- */
+.card{border-radius:16px;border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(10px);
+  box-shadow:inset 3px 0 0 var(--st,transparent),var(--shadow);transition:border-color var(--ease),transform var(--ease)}
+.card:hover{border-color:var(--line-2)}
+.card-h{padding:16px 20px;gap:14px;align-items:center}
+.card.flash{animation:flash 1.4s ease-out}
+.st-ico{width:30px;height:30px;border-radius:10px;font-size:15px;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--st,var(--ok)) 28%,transparent)}
+.hm h3,.card-h h3{font:600 14.5px/1.35 var(--f);letter-spacing:-.015em;color:var(--text);margin:0}
+.eyebrow{font:500 10.5px var(--fm);letter-spacing:.08em;text-transform:uppercase}
+.sum{font-size:12.8px}
+.chev{transition:transform .3s cubic-bezier(.22,1,.36,1)}
+.card-b{border-top:1px solid var(--line);background:color-mix(in srgb,var(--surface) 55%,transparent)}
+.facts dt{font:500 11.5px var(--fm);color:var(--muted)}
+.block h4,h4.mt{font:600 11px var(--fm);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+pre{border-radius:12px;background:color-mix(in srgb,var(--surface-2) 80%,transparent);font:12px/1.65 var(--fm)}
+.tbl th{font:500 10.5px var(--fm);letter-spacing:.08em;background:color-mix(in srgb,var(--surface-2) 70%,transparent)}
+details.group{border-radius:16px;background:var(--glass);backdrop-filter:blur(10px);box-shadow:var(--shadow)}
+details.group>summary{transition:background var(--ease)}
+details.group>summary:hover{background:color-mix(in srgb,var(--text) 4%,transparent)}
+.g-title{font:600 14.5px var(--f);letter-spacing:-.015em}
+.g-count,.g-meta{font:400 12px var(--fm)}
+
+/* kill the report's own scroll-driven rise; Motion does the reveals */
+section>h2,.bento>*{animation:none!important}
+.bento>.t-verdict{animation:spin 9s linear infinite!important}
+.js-motion [data-reveal]{opacity:0}
+.js-motion .l-b i{transform:scaleX(0)}
+@media print{.js-motion [data-reveal]{opacity:1!important}.js-motion .l-b i{transform:none!important}}
+
+/* ---------- toast (shadcn Sonner-style) ---------- */
+.toasts{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:100;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:14px;font:500 13px var(--f);color:var(--text);
+  background:var(--glass);backdrop-filter:blur(20px) saturate(1.6);border:1px solid var(--line-2);box-shadow:0 16px 40px -12px rgba(0,0,0,.35)}
+.toast i{width:8px;height:8px;border-radius:50%;background:var(--ok-fill);box-shadow:0 0 0 4px color-mix(in srgb,var(--ok-fill) 25%,transparent)}
+.toast.bad i{background:var(--bad-fill);box-shadow:0 0 0 4px color-mix(in srgb,var(--bad-fill) 25%,transparent)}
+
+/* ---------- command palette (shadcn Command in a Dialog) ---------- */
+.cmdk-overlay{position:fixed;inset:0;z-index:90;display:none;align-items:flex-start;justify-content:center;padding:12vh 16px 16px;
+  background:color-mix(in srgb,#000 45%,transparent);backdrop-filter:blur(6px)}
+.cmdk-overlay.open{display:flex}
+.cmdk{width:min(640px,100%);max-height:min(560px,72vh);display:flex;flex-direction:column;border-radius:20px;overflow:hidden;
+  background:var(--surface);border:1px solid var(--line-2);box-shadow:0 30px 80px -20px rgba(0,0,0,.55)}
+.cmdk-in{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line)}
+.cmdk-in svg{width:16px;height:16px;color:var(--muted);flex:none}
+.cmdk-in input{flex:1;height:52px;border:0;background:transparent;color:var(--text);font:400 15px var(--f);outline:none}
+.cmdk-list{overflow:auto;padding:6px 8px 10px;overscroll-behavior:contain}
+.cmdk-g{font:500 10.5px var(--fm);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:12px 10px 6px}
+.cmdk-i{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:9px 10px;border:0;border-radius:10px;background:transparent;
+  color:var(--body);font:400 13.5px var(--f);cursor:pointer}
+.cmdk-i[aria-selected=true]{background:var(--surface-2);color:var(--text)}
+.cmdk-dot{width:8px;height:8px;border-radius:50%;background:var(--c,var(--muted));flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--c,var(--muted)) 20%,transparent)}
+.cmdk-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmdk-t small{display:block;color:var(--muted);font:400 11.5px var(--fm);overflow:hidden;text-overflow:ellipsis}
+.cmdk-k{font:400 11px var(--fm);color:var(--muted)}
+.cmdk-empty{padding:28px 10px;text-align:center;color:var(--muted)}
+.cmdk-foot{display:flex;gap:16px;padding:10px 16px;border-top:1px solid var(--line);font:400 11.5px var(--fm);color:var(--muted)}
+
+/* ---------- small screens: keep the report's bottom bar, soften it ---------- */
+@media (max-width:920px){
+  .top{position:static;margin:8px 10px 0;padding:10px 12px}
+  .content{padding:24px 14px 96px;gap:48px}
+  .bnav{background:var(--glass)!important;backdrop-filter:blur(20px) saturate(1.6);border-top:1px solid var(--line)}
+  section>h2{font-size:23px}
+  .v-head h2{font-size:23px}
+  .cmdk-btn span.t{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  body::before,.t-verdict,.svc.ok .svc-dot::before{animation:none!important}
+  .js-motion [data-reveal]{opacity:1}
+}
+@media print{body::before,body::after,.progress,.toasts,.cmdk-overlay{display:none!important}.t-verdict{animation:none}}
+
+/* ---------- donut: progress effect (driven by proto.js) ---------- */
+.donut{overflow:visible}
+
+/* Lottie-style "circular progress bar": hair-line track, thick glowing arcs drawn over it */
+.donut .seg-c{animation:none;stroke-width:11;stroke-linecap:round;filter:drop-shadow(0 0 3px var(--g,transparent))}
+.donut .track{stroke:var(--text);stroke-width:1.5;opacity:.85}
+.donut .d-n{font:700 30px var(--f);letter-spacing:-.04em;font-variant-numeric:tabular-nums;fill:var(--text)}
+.donut .d-l{font:500 8.5px var(--fm);letter-spacing:.14em;text-transform:uppercase;fill:var(--muted)}
+.t-ring{cursor:default}

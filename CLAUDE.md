@@ -288,7 +288,7 @@ pytest.ini               pythonpath=., --strict-markers, --continue-on-collectio
                          markers: config, smoke, live
 .gitattributes           tests/assets/* binary; *.bat eol=crlf
 agenthub_health/
-  __init__.py            __version__ (bump on every change; currently 1.6.0)
+  __init__.py            __version__ (bump on every change; currently 1.7.0)
   __main__.py            opens the run logs, copies the console to console.log, runs pytest with the
                          plugin; -m "not live" unless --live; opens the report
   settings.py            paths, .env + suite.env loading, URL/secret var lists, fix_for() hints,
@@ -318,6 +318,7 @@ agenthub_health/
   causes.py              explain(res) and status-aware fix(res, owner, service_fix)
   plugin.py              classifies outcomes, records evidence, renders the report at sessionfinish
   report.py              bento dashboard HTML (see section 7); also writes results/history.json
+  report_theme.py        visual layer applied to the rendered report (report_assets/proto.css, proto.js; Motion)
 remote_config/<ENV>/     created at run time: agents.json, tools.json, mcps.json, llm-providers.json,
                          pat-config.json (bodies exactly as downloaded) and snapshot.json
 logs/                    created at run time: one folder per run, plus setup.log from run_tests.bat
@@ -371,9 +372,12 @@ Orphan agents on QAS: `GoogleWorkspaceAgent`, `NanoBananaImageEditorAgent` and
 
 ## 7. Results presentation (`results/result.html`)
 
-- **Style (1.6.0):** NextUI / HeroUI tokens on the 1.5.0 bento layout, written in `report.py`
-  (CSS and JS inline, no build step, no script from outside). Only the fonts (Inter,
-  JetBrains Mono) come from Google Fonts; without them the page falls back to system fonts.
+- **Style (1.7.0):** `report.py` still renders the 1.6.0 NextUI / HeroUI page (CSS and JS inline, no build
+  step). On top of it `report_theme.apply()` adds a visual layer from `agenthub_health/report_assets/`
+  (`proto.css`, `proto.js`): shadcn "zinc" tokens, aurora bento, floating glass shell, Geist fonts, and
+  Motion (motion.dev). **Motion is loaded from `cdn.jsdelivr.net` (`motion@12.23.12`), the only script from
+  outside**; offline, a 2.5 s fail-safe drops the `js-motion` class and the page shows as plain CSS.
+  The 1.6.0 look is the base, so the "Tokens" note below still describes the underlying variables.
 - **Tokens and where they come from:** light values are from
   `designsystems.one/design-systems/nextui` (a catalogue page titled "HeroUI Design System";
   it says its values are "indicative, not canonical"): primary `#006fee`, secondary `#7828c8`,
@@ -783,3 +787,17 @@ passed). No credential from `.env` or pat-config appears in the logs or the repo
   page only; not scrolled through, no Teams paste.
 - Suite issues changed from orange to purple (NextUI palette). The 1.5.0 look is kept as
   `report.py.v1.5.0-bento.bak` in the session scratchpad only, not in the repository.
+
+### Version 1.7.0 (2026-11-17)
+
+- New `agenthub_health/report_theme.py` + `report_assets/proto.css` and `proto.js`, applied by `report.render()`
+  to the finished HTML (the report's own markup, ids, script, Teams copy and history are unchanged).
+  Added: shadcn-style tokens and components, aurora background, floating sidebar and toolbar, Motion
+  reveals, count-up numbers, sliding nav pill and filter thumb, Ctrl+K command palette, copy toasts, and the
+  donut animation. The donut plays when the cursor enters the ring or a status chip; a chip ends on only its
+  own segment with that count in the centre, and a category without a segment plays the full default draw.
+- Designed in a prototype first (`results/result.prototype.html`, built by the throwaway
+  `results/prototype/build_prototype.py`, both gitignored); this version moves the same files into the package.
+- Verified in the built-in browser on a real report: light, dark, 375 px width, command palette, donut
+  hover and chip hover through scripted events. Not verified: a real mouse hover, a full suite run with
+  this version, Edge, Safari, Teams paste. The footer and `suite_version` show 1.7.0 after the next run.
