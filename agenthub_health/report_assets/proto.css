@@ -266,3 +266,62 @@ section>h2,.bento>*{animation:none!important}
 .donut .d-n{font:700 30px var(--f);letter-spacing:-.04em;font-variant-numeric:tabular-nums;fill:var(--text)}
 .donut .d-l{font:500 8.5px var(--fm);letter-spacing:.14em;text-transform:uppercase;fill:var(--muted)}
 .t-ring{cursor:default}
+
+/* ---------- overview tile motion v2 (driven by proto.js) ---------- */
+/* share meter along the bottom edge of each status chip: width = share of all checks */
+.chip .meter{position:absolute;left:0;bottom:0;height:3px;border-radius:0 3px 3px 0;background:var(--c);
+  transform-origin:left center;box-shadow:0 0 10px var(--c);pointer-events:none}
+/* healthy verdict: the icon gives off a slow ring pulse */
+html[data-verdict=ok] .v-ico{animation:vpulse 3.4s ease-out 1.6s infinite}
+@keyframes vpulse{
+  0%{box-shadow:0 10px 24px -8px var(--glow-fill),inset 0 1px 0 rgba(255,255,255,.35),0 0 0 0 color-mix(in srgb,var(--glow-fill) 45%,transparent)}
+  70%,100%{box-shadow:0 10px 24px -8px var(--glow-fill),inset 0 1px 0 rgba(255,255,255,.35),0 0 0 18px transparent}}
+.t-verdict,.t-ring{will-change:transform}
+/* cards: gradient border draw (reference: codefronts.com "Gradient Border Draw").
+   A conic ring in the card's own status colour fades in on hover and circles the border
+   (an @property angle). It is a masked pseudo-element, so the card's content is untouched. */
+@property --ring{syntax:"<angle>";inherits:false;initial-value:0deg}
+/* applies to every summary card: check cards, run-detail cards, passed-area groups, root causes,
+   overview tiles (not the verdict hero, which has its own animated border), status chips, service tiles */
+.card,details.cause,details.group,.tile:not(.t-verdict),.chip,.svc{position:relative}
+.card,details.cause{--rc:var(--st)}
+details.group{--rc:var(--ok)}
+.chip,.svc{--rc:var(--c)}
+.tile{--rc:#818cf8}
+:is(.card,details.cause,details.group,.tile:not(.t-verdict),.chip,.svc)::before{content:"";position:absolute;inset:0;z-index:3;border-radius:inherit;padding:2px;pointer-events:none;
+  background:conic-gradient(from var(--ring),
+    color-mix(in srgb,var(--rc) 16%,transparent) 0deg,
+    color-mix(in srgb,var(--rc) 16%,transparent) 190deg,
+    var(--rc) 290deg,
+    color-mix(in srgb,var(--rc) 45%,var(--text)) 344deg,
+    color-mix(in srgb,var(--rc) 16%,transparent) 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);
+  opacity:0;transition:opacity .4s ease;animation:ringspin 3.2s linear infinite;animation-play-state:paused}
+/* a passed-area group is huge when open: only its own header triggers its ring, not the cards inside */
+:is(.card,details.cause,.tile:not(.t-verdict),.chip,.svc):hover::before,
+.card:focus-within::before,
+details.group:has(>summary:hover)::before{opacity:1;animation-play-state:running}
+/* an expanded card (or group) shows no ring: the effect is for collapsed summaries only */
+details:is(.card,.cause,.group)[open]::before{opacity:0!important;animation-play-state:paused!important}
+@keyframes ringspin{to{--ring:360deg}}
+@media (prefers-reduced-motion:reduce){:is(.card,details.cause,details.group,.tile,.chip,.svc)::before{animation:none}}
+@media print{:is(.card,details.cause,details.group,.tile,.chip,.svc)::before{display:none}}
+/* sidebar: blur to focus (reference: codefronts.com "Blur to Focus Text Effect").
+   Hovering (or Tab-focusing) an UNSELECTED item throws every other unselected item out of focus;
+   the selected item stays sharp as the anchor. Defocus is slower (.5s) than refocus (.25s). */
+.nav a{transition:color var(--ease),filter .25s ease,opacity .25s ease,scale .25s ease}
+.nav:has(a:not(.on):hover) a:not(:hover):not(.on),
+.nav:has(a:not(.on):focus-visible) a:not(:focus-visible):not(.on){
+  filter:blur(1.6px) saturate(.6);opacity:.45;scale:.985;transition-duration:.5s}
+@media (prefers-reduced-motion:reduce){.nav a{transition:none}}
+/* section heading text: variable font weight shift (needs Geist as a variable font, see build script) */
+main.content>section>h2{font-synthesis-weight:none}
+main.content>section>h2 .h-t{display:inline-block;font-weight:500;color:color-mix(in srgb,var(--text) 78%,transparent);
+  transition:font-weight .45s ease,color .3s ease}
+main.content>section:hover>h2 .h-t,main.content>section:focus-within>h2 .h-t{font-weight:800;color:var(--text)}
+/* invisible bold twin: reserves the widest width so nothing around the heading moves */
+main.content>section>h2 .h-t::after{content:attr(data-text);display:block;height:0;overflow:hidden;visibility:hidden;font-weight:800;pointer-events:none}
+@media (prefers-reduced-motion:reduce){main.content>section>h2 .h-t{transition:none}}
+@media (prefers-reduced-motion:reduce){.v-ico{animation:none!important}}
+@media print{.v-ico{animation:none!important}}

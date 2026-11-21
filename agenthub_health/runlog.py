@@ -7,7 +7,7 @@ Run logs. Every run gets its own folder under logs/, named after its start time:
   logs/<YYYYmmdd-HHMMSS>/console.log   everything the run printed to the console (pytest output,
                                        and a traceback if the run crashed)
 
-Only the newest settings.LOG_RUNS_TO_KEEP folders (5 by default) are kept; older ones are
+Only the newest settings.LOG_RUNS_TO_KEEP folders (7 by default) are kept; older ones are
 deleted when a new run starts. Every line goes through redact.text() before it is written,
 the same masking the console and the HTML report use.
 """

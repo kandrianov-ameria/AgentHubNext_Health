@@ -44,6 +44,7 @@ AREAS = {
     "test_31_generation_services": "Generation services",
     "test_40_mcp_servers": "MCP servers",
     "test_41_tavily_image_mcp": "Tavily image MCP",
+    "test_42_mavslides": "MAV Slides",
     "test_50_logs_mapping_seq": "Log upload, device mapping, Seq",
     "test_90_live_generation": "Live generation",
 }
@@ -58,7 +59,7 @@ STATUSES = [
     ("skipped", "Skipped", "--neu", "skip"),
 ]
 _BAD = {"failed", "unused", "suite"}
-HISTORY_KEEP = 10
+HISTORY_KEEP = settings.LOG_RUNS_TO_KEEP  # same limit as the log folders (AGENTHUB_HEALTH_LOG_RUNS)
 
 
 def e(s) -> str:

@@ -251,8 +251,14 @@ def _register_secrets(entity: str, text: str | None) -> None:
                 redact.register_many(args[i + 1] for i, a in enumerate(args[:-1]) if a == "--api-key")
     if entity.startswith(PAT) and isinstance(data, dict) and isinstance(data.get("AgentHub"), dict):
         for key, value in data["AgentHub"].items():
-            if key.lower() in ("defaultdeepgramapikey", "proxyauthheader") and isinstance(value, str):
+            if key.lower() in ("defaultdeepgramapikey", "proxyauthheader", "mavstarkitapikey",
+                               "devicemappingbearertoken") and isinstance(value, str):
                 redact.register(value)
+            elif key.lower() == "mavslides" and isinstance(value, dict):
+                # every key, token and the web-search token of MAV Slides (not the urls and models)
+                for sub, v in value.items():
+                    if sub.lower().endswith(("apikey", "token")) and isinstance(v, str):
+                        redact.register(v)
 
 
 # --- the run ----------------------------------------------------------------------------

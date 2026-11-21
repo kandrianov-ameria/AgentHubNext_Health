@@ -34,7 +34,8 @@ One command runs everything: `run_tests.bat`. The report is written to
 
 - `.env` holds live credentials copied from the app's build secrets file
   (`secrets.local.txt` in the agent-hub-backend root; since 4.0.64 they are no longer
-  hardcoded in the source).
+  hardcoded in the source). Since 4.0.71 that is only `AIHUB_WIN_TOKEN` and `SEQ_API_KEY`; the other
+  service credentials come from the AgentHub section of pat-config (section 4).
   - **Never** print, paste, commit or upload its values.
   - **Never** overwrite the user's `.env`. (Exception made once, at the user's
     request, in 1.3.0: non-secret keys moved out; backup `.env.backup-20261015`.)
@@ -46,11 +47,12 @@ One command runs everything: `run_tests.bat`. The report is written to
   `redact.text()`.
   - Register every secret found at runtime with `redact.register()`: LLM
     provider headers, MCP headers, the MCP `--api-key` argument,
-    `ProxyAuthHeader`, and the Deepgram key.
+    `ProxyAuthHeader`, the Deepgram key, and (1.9.0) `MavStarkitApiKey`, `DeviceMappingBearerToken`
+    and every `*ApiKey` / `*Token` of `AgentHub.MavSlides` (`bootstrap._register_secrets`).
   - Masks look like `****last4`.
 - `remote_config/` holds the downloaded configuration as plain JSON, including
-  LLM provider keys, MCP headers, the Tavily key, `DefaultDeepgramApiKey` and
-  `ProxyAuthHeader`. Treat it like `.env`. (The user did not choose between
+  LLM provider keys, MCP headers, the Tavily key, `DefaultDeepgramApiKey`,
+  `ProxyAuthHeader`, `MavStarkitApiKey`, `DeviceMappingBearerToken` and the MAV Slides keys. Treat it like `.env`. (The user did not choose between
   plain and encrypted storage; plain was used. The app itself encrypts its
   pat-config cache with AES-GCM.)
 - Logs (`logs/`) go through `redact.text()` line by line, like the console.
@@ -68,7 +70,7 @@ Precedence, highest first: real environment variable (and `--env`), `.env`,
 `suite.env`, the default in `settings.py` (`load_dotenv(override=False)` is
 called for `.env` first, then `suite.env`).
 
-### Build secrets of agent-hub-backend (since 4.0.64)
+### Build secrets of agent-hub-backend (since 4.0.64; only three left since 4.0.71)
 
 The app no longer has credentials in its source (git history before 4.0.64 still does, and those
 old values were rotated). The developer keeps them in the git-ignored `secrets.local.txt` in the
@@ -77,20 +79,37 @@ repository root (`NAME=value` per line; template `secrets.local.example.txt`);
 rebuild and a rollout; after that, update `secrets.local.txt` and rerun `refresh_env.py`, which reads
 that file (or `--secrets <path>`).
 
+Since 4.0.71 only the **bootstrap** secrets are left, the ones needed before the remote configuration can be
+downloaded (`docs/pat-config-api.md`, `secrets.local.example.txt`):
+
 | `.env` key | `secrets.local.txt` name | Used by |
 |---|---|---|
-| `AIHUB_WIN_TOKEN` | `AIHUB_SERVICE_AUTH_WINDOWS` | `RemoteConfigurationManager.WindowsApiToken`. The template says the full Authorization header (`Bearer <id>|<token>`); the suite adds `Bearer ` itself, so `refresh_env.py` strips a leading `Bearer `. |
-| `STARKIT_API_KEY` | `MAVSTARKIT_API_KEY` | `ImageTo3DAgentSettings.MavStarkitApiKey` |
-| `AIHUB_DEVICE_MAPPING_TOKEN` | `DEVICE_MAPPING_BEARER_TOKEN` | `ImageTo3DAgentSettings.DeviceMappingBearerToken`. Also used by LogUploadService for `/api/logs-session` and by SessionImageUploader for `/api/logs/session-image`. |
+| `AIHUB_WIN_TOKEN` | `AIHUB_SERVICE_AUTH_WINDOWS` | `RemoteConfigurationManager.WindowsApiToken`. The template says the full Authorization header (`Bearer <id>|<token>`); the suite adds `Bearer ` itself, so `refresh_env.py` strips a leading `Bearer `. Also used by `tools/mav-starkit-api/*.bat`. |
 | `SEQ_API_KEY` | `AGENTHUB_SEQ_API_KEY` | `WriteTo.Seq(...)`, `src/AgentHub/Global.cs` |
 
 `AIHUB_SERVICE_AUTH_MAC` is also in that file; the Windows-only suite does not use it. Base URLs are
 still constants in the source and are still read from there.
 
+**Moved to pat-config in 4.0.71** (no longer in `secrets.local.txt`, `.env` or `suite.env`; the suite
+reads them from the downloaded AgentHub section, `remote.agenthub_value()` / `remote.mavslides()`):
+
+| AgentHub setting | Old `.env` key | Used by |
+|---|---|---|
+| `MavStarkitApiKey` | `STARKIT_API_KEY` | `RemoteSettingsManager.ApplyServiceCredentials` -> `ImageTo3DAgentSettings.MavStarkitApiKey` (`X-API-Key`) |
+| `DeviceMappingBearerToken` (`<id>|<token>`, no `Bearer `) | `AIHUB_DEVICE_MAPPING_TOKEN` | same -> `ImageTo3DAgentSettings.DeviceMappingBearerToken`: device mapping, `/api/logs-session` (LogUploadService), `/api/logs/session-image` (SessionImageUploader), all as `AuthenticationHeaderValue("Bearer", token)` |
+| `MavSlides.*` (14 strings, see section 5) | `MAVSLIDES_*` in `.env` and `suite.env` | `SlidesService.Configure` -> `MavSlidesServiceConfig` -> `EngineSettings.Create` |
+
+Old keys that are still in a PC's `.env` (`STARKIT_API_KEY`, `AIHUB_DEVICE_MAPPING_TOKEN`, `MAVSLIDES_*`)
+are ignored. The suite deliberately does not fall back to them: the app does not either, so a pass
+means the app has the value. `refresh_env.py` leaves them out when it writes a new `.env`.
+
 ### Optional `.env` keys
 
 - `TWO_D_TO_3D_BASIC_AUTH`, `TWO_D_TO_VIDEO_BASIC_AUTH` (empty means no auth
   header; `refresh_env.py` keeps values already set).
+- (1.8.0 had six `MAVSLIDES_*` keys here; removed in 1.9.0, they are `AgentHub.MavSlides` in pat-config now.
+  A key value with a space is sent as the whole Authorization header, anything else as `Bearer <value>`:
+  `LlmClient.SetAuthorization`, mirrored in `test_42._authorization`.)
 - `.env.example` lists the `.env` keys with no values.
 
 ### `suite.env` keys (committed, no secrets)
@@ -108,7 +127,11 @@ still constants in the source and are still read from there.
   `AGENTHUB_HEALTH_LLM_TIMEOUT` (60 s),
   `AGENTHUB_HEALTH_GENERATION_TIMEOUT` (900 s),
   `AGENTHUB_HEALTH_CONFIG_TIMEOUT` (20 s, the app's value for the config
-  downloads) and `AGENTHUB_HEALTH_LOG_RUNS` (5 run folders kept).
+  downloads) and `AGENTHUB_HEALTH_LOG_RUNS` (7 runs kept, since 1.9.1: log folders and `results/history.json`).
+- **MAV Slides** (1.8.0 had eight `MAVSLIDES_*` address and model keys here; removed in 1.9.0): the addresses and
+  models are `AgentHub.MavSlides` in pat-config since 4.0.71. An empty coder or vision url and model means "same as
+  the main LLM" (`EngineSettings.Fallback`, mirrored in `test_42._endpoint`); an empty `OpenRouterUrl` means
+  `https://openrouter.ai/api/v1` (`EngineSettings.OpenRouterUrl`, `test_42.OPENROUTER_DEFAULT_URL`).
 
 ### Credentials the suite reads at runtime
 
@@ -116,7 +139,8 @@ These are never stored in `.env`. They come from the download at the start of
 each run and are saved with it in `remote_config/<ENV>/`:
 
 - **From `/api/pat-config/<ENV>` → AgentHub section:** `DefaultDeepgramApiKey`
-  and `ProxyAuthHeader` (Whisper, vision and SAM3).
+  and `ProxyAuthHeader` (Whisper, vision and SAM3); since 1.9.0 also `MavStarkitApiKey`,
+  `DeviceMappingBearerToken` and `MavSlides.*` (see "Moved to pat-config" above).
 - **From `/api/llm-providers`:** provider keys, in `headers`.
 - **From `/api/mcps`:** MCP headers, and the Tavily key as `--api-key` in the
   stdio record's `arguments`.
@@ -233,7 +257,19 @@ confirmed by running AgentHubNext against a faulty configuration.
 
 - Fields: `DefaultDeepgramApiKey`, `WhisperUrl`, `WhisperModel`,
   `ProxyAuthHeader`, `RemoteSyncOnSessionCreate`, `VisionUrl`, `VisionModel`,
-  `SamPredictTextUrl` and `SamPredictUrl`.
+  `SamPredictTextUrl` and `SamPredictUrl`; since 4.0.71 also `MavStarkitApiKey`,
+  `DeviceMappingBearerToken` and the object `MavSlides`.
+- `MavSlides` (`MavSlidesRemoteSettings`, no `[JsonPropertyName]`, so names match case-insensitively): `LlmUrl`,
+  `LlmApiKey`, `LlmModel`, `CoderUrl`, `CoderApiKey`, `CoderModel`, `VisionUrl`, `VisionApiKey`, `VisionModel`,
+  `OpenRouterUrl`, `OpenRouterApiKey`, `TavilyApiKey`, `WebSearchMcpUrl`, `WebSearchMcpToken`, all strings.
+  JSON null for `MavSlides` gives an empty object (the setter); a non-object or a non-string member fails the
+  whole section (mirrored in `dotnet.read_agenthub_section`; read against the DTO, not run against the app).
+- Missing fields (an older server or cache) read as empty strings: the app still starts, logs a Warning naming the
+  field (`ApplyServiceCredentials`; `SlidesService` and the engine report "not configured"), and the feature that
+  needs it fails or degrades. Both tokens are trimmed, and the device-mapping token must not contain `Bearer `.
+- `docs/pat-config-api.md` (2026-11-20): the Windows service serves the section in every environment, but only
+  **DEV** carries `MavStarkitApiKey`, `DeviceMappingBearerToken` and `MavSlides`; QAS, STG and PRD "must be filled
+  in before a build relying on them is rolled out there". Not checked against the real QAS.
 - `SpeechToTextUrl` is ignored by the app (`docs/pat-config-api.md`: "The old
   `SpeechToTextUrl` server field is ignored and no longer cached or used").
 - On QAS, `SpeechToTextUrl` equals `WhisperUrl`
@@ -288,7 +324,7 @@ pytest.ini               pythonpath=., --strict-markers, --continue-on-collectio
                          markers: config, smoke, live
 .gitattributes           tests/assets/* binary; *.bat eol=crlf
 agenthub_health/
-  __init__.py            __version__ (bump on every change; currently 1.7.0)
+  __init__.py            __version__ (bump on every change; currently 1.10.0)
   __main__.py            opens the run logs, copies the console to console.log, runs pytest with the
                          plugin; -m "not live" unless --live; opens the report
   settings.py            paths, .env + suite.env loading, URL/secret var lists, fix_for() hints,
@@ -308,8 +344,10 @@ agenthub_health/
   usage.py               per run, from this run's configuration: which config-dependent services the
                          app uses (2d-to-3d, 2d-to-video, mav-starkit-api, device-mapping via
                          ImageTo3DAgent / ImageToVideoAgent reachable from PointAndTalkAgent;
-                         deepgram, whisper, vision, sam3 via pat-config fields). plugin._apply_usage
-                         turns a failure of an unused service into "no effect on the app"
+                         deepgram, whisper, vision, sam3 via pat-config fields; mavslides-llm,
+                         mavslides-openrouter, mavslides-websearch, mavslides-tavily via the tools
+                         assigned to MavSlidesAgent; mavslides-vision is always "unused", see 1.8.0).
+                         plugin._apply_usage turns a failure of an unused service into "no effect on the app"
   runlog.py              logs/<YYYYmmdd-HHMMSS>/suite.log, tests.log, console.log; keeps the newest
                          LOG_RUNS_TO_KEEP folders; every line redacted. console.log copies pytest's
                          terminal writer (plugin.pytest_configure wraps tr._tw._file); sys.stdout is
@@ -323,9 +361,10 @@ remote_config/<ENV>/     created at run time: agents.json, tools.json, mcps.json
                          pat-config.json (bodies exactly as downloaded) and snapshot.json
 logs/                    created at run time: one folder per run, plus setup.log from run_tests.bat
 scripts/
-  refresh_env.py         regenerates .env (credentials only) from the repo's secrets.local.txt and updates
-                         changed base URLs in suite.env (only after a rotation)
-  mock_aihub.py          local mock of the configuration service with fault scenarios (mode.txt)
+  refresh_env.py         regenerates .env (AIHUB_WIN_TOKEN, SEQ_API_KEY and the two basic-auth values) from the
+                         repo's secrets.local.txt and updates changed base URLs in suite.env (only after a rotation)
+  mock_aihub.py          local mock of the configuration service with fault scenarios (mode.txt); the
+                         `slides*` modes also mock the MAV Slides endpoints (see its docstring)
   sam3_point_formats.py  one-off: posts SAM3 /predict in the README format and the Sam3Client format
 tests/assets/            probe.jpg (640x360, text "MAVERICK"), probe_silence.wav (3 s, 16 kHz),
                          probe_voice.wav, README.md
@@ -349,7 +388,7 @@ is per subject, so one bad token is one root cause, not one per endpoint.
 | `test_05_config_download` | Each of the five start-up downloads succeeds by the app's rules; failures name the snapshot in use; a successful download was saved |
 | `test_02_agent_graph` | Root agent exists; handoff tool not assigned; agents named in the root prompt are reachable; memory tools assigned; orphan agents (informational) |
 | `test_10_aihub_service` | Refuses no token and a wrong token; unknown environment returns 404 (the shipped-token check moved to `test_05`) |
-| `test_11_pat_config` | The downloaded AgentHub section is present and deserializable (System.Text.Json rules, incl. the sync flag type); required fields; `WhisperUrl` absolute; segmentation fields all-or-nothing; `SpeechToTextUrl` equals `WhisperUrl` |
+| `test_11_pat_config` | The downloaded AgentHub section is present and deserializable (System.Text.Json rules, incl. the sync flag type); required fields; `WhisperUrl` absolute; segmentation fields all-or-nothing; `SpeechToTextUrl` equals `WhisperUrl`; (1.9.0) `MavStarkitApiKey` and `DeviceMappingBearerToken` set, the token without `Bearer `, `AgentHub.MavSlides` URLs absolute |
 | `test_20_llm_providers` | Every provider answers a minimal request with its key and model (parametrised when tests are collected) |
 | `test_21_speech` | Deepgram `/v1/projects`; Whisper in en, de and auto |
 | `test_22_segmentation` | Vision naming; SAM3 text; SAM3 point (marked no-effect) |
@@ -357,6 +396,7 @@ is per subject, so one bad token is one root cause, not one per endpoint.
 | `test_31_generation_services` | 2d-to-3d and 2d-to-video: health; empty task returns 400; unknown file token returns 400; unknown task returns 404 |
 | `test_40_mcp_servers` | Definition is well formed (all servers); initialize handshake for `streamable_http` servers only (stdio servers run only on a Maverick machine and get no handshake check from 1.2.0). Servers no agent assigns are marked no-effect. |
 | `test_41_tavily_image_mcp` | stdio record passes `--api-key` and `--folder`; Tavily `/search` returns images. **One real, quota-using search per run.** |
+| `test_42_mavslides` | MAV Slides (1.8.0; settings from `AgentHub.MavSlides` of pat-config since 1.9.0): the main, coder and vision LLM each answer `chat/completions` (vision with an image); OpenRouter `/images` refuses no key, and accepts the key (a request without a prompt must be rejected as invalid, not unauthorized; 402 = no credit); web-search MCP `initialize`; the MAV Slides Tavily key returns images (**one more quota-using search per run**); `MavSlidesAgent` has its 7 tools and `%existing_presentations%`. Marker `live`: one real OpenRouter image (billable). An empty value skips the check when the service is unused, and is a `ConfigDefect` (named `AgentHub.MavSlides.<Field>`) when it is used. |
 | `test_50_logs_mapping_seq` | Device mapping (service `device-mapping`); log-upload token for `/api/logs-session` and `/api/logs/session-image` (refused without a token; token accepted; service `log-upload`, always used); Seq ingestion |
 | `test_90_live_generation` | Marker `live`: real 3D and stereo video generation. Slow and billable; only with `--live`. |
 
@@ -378,6 +418,8 @@ Orphan agents on QAS: `GoogleWorkspaceAgent`, `NanoBananaImageEditorAgent` and
   Motion (motion.dev). **Motion is loaded from `cdn.jsdelivr.net` (`motion@12.23.12`), the only script from
   outside**; offline, a 2.5 s fail-safe drops the `js-motion` class and the page shows as plain CSS.
   The 1.6.0 look is the base, so the "Tokens" note below still describes the underlying variables.
+  1.10.0 adds hover and entrance motion on top (see "Version 1.10.0" below). Geist is requested as a variable
+  font (`wght@100..900`), which the heading weight shift needs.
 - **Tokens and where they come from:** light values are from
   `designsystems.one/design-systems/nextui` (a catalogue page titled "HeroUI Design System";
   it says its values are "indicative, not canonical"): primary `#006fee`, secondary `#7828c8`,
@@ -408,7 +450,7 @@ Orphan agents on QAS: `GoogleWorkspaceAgent`, `NanoBananaImageEditorAgent` and
   and the five slowest requests drawn against `AGENTHUB_HEALTH_TIMEOUT` (amber above
   half of it, same rule as `suite.log`, LLM and live checks excluded).
 - **Run history:** `results/history.json` (gitignored with `results/`) keeps the
-  check ids and categories of the last 10 runs per environment. It feeds the
+  check ids and categories of the last `AGENTHUB_HEALTH_LOG_RUNS` (7) runs per environment. It feeds the
   badges "new" and "still failing - N runs" on failure cards, "fixed since last run"
   on passed cards, and the changes tile. Nothing from responses is stored. A broken
   or missing file only means "first run recorded".
@@ -801,3 +843,105 @@ passed). No credential from `.env` or pat-config appears in the logs or the repo
 - Verified in the built-in browser on a real report: light, dark, 375 px width, command palette, donut
   hover and chip hover through scripted events. Not verified: a real mouse hover, a full suite run with
   this version, Edge, Safari, Teams paste. The footer and `suite_version` show 1.7.0 after the next run.
+
+### Version 1.8.0 (2026-11-20, no real run yet)
+
+- Backend 4.0.70 (HEAD dcf3f95, 2026-11-19, merge of PR #6) adds MAV Slides: `MavSlidesAgent` with the tools
+  `generate_presentation`, `open_presentation`, `show_slide`, `edit_slide`, `edit_slide_image`,
+  `get_presentation_state`, `close_presentation` (files under `src/remote_prompts/windows/`), and an engine in
+  `src/Windows/MavSlides/Engine` that calls its own services. Their addresses, keys and models are build secrets
+  (12 new `MAVSLIDES_*` names in `secrets.local.example.txt`), not remote configuration. No change to
+  `RemoteConfiguration/`, pat-config, Whisper, vision, SAM3, Deepgram, log upload, mav-starkit-api or the existing
+  MCP code was found (diff searched for URLs, headers and endpoints; not read line by line).
+- At review time the saved QAS copy of 2026-11-20 10:14 already contained `MavSlidesAgent` and
+  `generate_presentation`, so the feature is live on QAS. Not checked: whether `PointAndTalkAgent` hands off to it
+  there (the app's `PointAndTalkAgent` file did not change in the repository).
+- New `tests/test_42_mavslides.py` (see section 6), five services in `services.py` and `usage.py`
+  (`mavslides-llm`, `-openrouter`, `-websearch`, `-tavily`, `-vision`), settings in `settings.py` / `suite.env` /
+  `.env.example`, `refresh_env.py` copies the new values, `mock_aihub.py` has `slides*` modes.
+- Usage rules: llm = `generate_presentation` or `edit_slide`; openrouter = `edit_slide_image`, or
+  `generate_presentation` as the picture fallback; web search and Tavily = `generate_presentation` (a failed web
+  search or image search does not stop a presentation: the engine continues without it, so the impact texts say
+  "degraded"). **Vision is always reported as no effect**: the engine calls it only when "remove watermarks" or
+  "expand web images" is on in the AgentHub settings window, both off by default, and that setting lives on each PC
+  (`agenthub.settings.json`), invisible to the suite. If the team turns them on by default, change that rule in
+  `usage.py`.
+- Not grounded in the source, to confirm on the first real run:
+  - `test_openrouter_key_accepted` sends `/images` without a prompt and expects 400 or 422 (a 2xx with an `error`
+    object is also accepted; a 2xx without one is reported as `UNEXPECTED_ACCESS`, because an image may have been
+    generated and billed). How OpenRouter answers that is not known. `test_openrouter_refuses_without_key` expects
+    401/403 without a key.
+  - The model name in that request is the first of `OpenRouterOptions.DefaultImageModels`.
+  - The web-search MCP check is `initialize` only. It does not list tools or search (that needs the session id
+    header, which `probe.call` does not expose), so it does not prove `tavily_search` exists.
+  - Which of the owners named in `services.py` is right is a guess ("MAV Slides developer / owner of the endpoint").
+- Verified on a copy against `scripts/mock_aihub.py` with a fake `.env`: `slides` (15 passed), `slides-rejected`
+  (LLM, OpenRouter, Tavily fail; vision is no-effect), `slides-nocredit` (402), `slides-noplaceholder`
+  (ConfigDefect), `healthy` (agent absent: checks skipped, agent check skipped), unset values (suite issue when the
+  service is used, skip when not), and `refresh_env.py` with a fake `secrets.local.txt` (keys to `.env`, addresses
+  to `suite.env`, empty coder/vision left alone). Not verified: a real run, the real services, the report page for
+  the new rows.
+- After this version the user must rerun `refresh_env.py` once to get the MAV Slides keys into `.env`. Until then
+  the MAV Slides checks are suite issues (the agent is live on QAS), not failures.
+  **Superseded by 1.9.0:** the MAV Slides values are no longer in `.env` or `suite.env`; no rerun is needed for them.
+
+### Version 1.9.0 (2026-11-21, no real run yet)
+
+- Pulled backend 4.0.71 (commit 6024af4, `next`, one commit after dcf3f95). Its change: the service credentials
+  `MavStarkitApiKey`, `DeviceMappingBearerToken` and the MAV Slides endpoints, models and keys are no longer build
+  secrets. They are read from the AgentHub section of pat-config (`AgentHubRemoteSettings`, new `MavSlides` object;
+  `RemoteSettingsManager.ApplyServiceCredentials`; `SlidesService.Configure`). `BuildSecret` items of
+  `Ameria.LlmExecutionEngine` and `MavSlides` and `Engine/Secrets.cs` were deleted. Only `AGENTHUB_SEQ_API_KEY` and the
+  two AI-Hub tokens stay in `secrets.local.txt`. Base URLs are unchanged constants. Other files in the commit are
+  docs, build scripts, `tools/mav-starkit-api/*.bat` and tests; none changes an endpoint or a request shape.
+- Suite: `dotnet.read_agenthub_section` reads the three new members (the `MavSlides` object with 14 string members);
+  `remote.agenthub_value()` / `remote.mavslides()` return a value from the downloaded section, skip when there is no
+  usable section, and raise a `ConfigDefect` per setting when it is empty (service `mav-starkit-api`, `log-upload`, or
+  the MAV Slides service of the check). `test_30`, `test_50` and `test_42` use them instead of `.env` / `suite.env`.
+- `settings.SECRET_VARS` is now `AIHUB_WIN_TOKEN` and `SEQ_API_KEY`; `MAVSLIDES_*` lists and the `suite.env` /
+  `.env.example` entries are gone; `refresh_env.py` writes only the two credentials plus the basic-auth values and no
+  longer reads MAV Slides values; `bootstrap._register_secrets` masks the new secrets; `services.py` names pat-config as the
+  credential location and "no rebuild needed" as the rotation (`PAT_FIX`).
+- New checks in `test_11`: `test_service_credential_is_set[MavStarkitApiKey|DeviceMappingBearerToken]`,
+  `test_device_mapping_token_has_no_bearer_prefix`, `test_mavslides_urls_are_absolute`.
+- Decision: no fallback to old `.env` keys (see section 4). Consequence on a real QAS: if QAS does not carry the new
+  values yet (the docs say only DEV did on 2026-11-20), the checks of mav-starkit-api, device mapping and log upload
+  fail with a configuration defect that affects the app (`log-upload` is always used), and the MAV Slides checks fail
+  as defects because `MavSlidesAgent` is live on QAS. That is the app's own situation, not a suite fault.
+- Verified on a copy in the session scratchpad with a fake `.env` against `scripts/mock_aihub.py` (new modes
+  `creds-missing`, `token-bearer`, `slides-missing`, `slides-nosection`, `slides-badtype`; the `slides` and `healthy`
+  modes): `test_00`, `test_11` and `test_42` give 32 passed and 1 skipped on `slides`; each fault mode produced the
+  expected failure and nothing else; a scan of logs and report for the fake secret values found them only in
+  `remote_config/`. Not verified: a real run on the user's PC, the real QAS, the report page for the new rows.
+### Version 1.9.1 (2026-11-21)
+
+- At the user's request the suite keeps the **7 most recent runs** and deletes older ones automatically at every
+  run: `AGENTHUB_HEALTH_LOG_RUNS=7` in `suite.env` (default in `settings.py` also 7) now governs both the run folders
+  in `logs/` (`runlog._prune`) and the runs per environment in `results/history.json` (`report.HISTORY_KEEP`, was a
+  fixed 10). `logs/setup.log` and `remote_config/` are single files per environment and are not affected.
+
+### Version 1.10.0 (2026-11-21)
+
+Report motion, designed in the prototype first (`results/prototype/`, gitignored) and moved into
+`agenthub_health/report_assets/proto.css` and `proto.js`; `report_theme._EARLY` now requests Geist as
+`wght@100..900`. No change to checks, classification or the report's own markup and script.
+
+- **Overview entrance:** one sequence instead of independent reveals: verdict tile, its icon (spring) and headline,
+  ring tile, then the six status chips. Each non-zero chip gets a share meter along its bottom edge (width =
+  share of all checks, minimum 6 %). A red verdict shakes its icon once; a green one gives off a slow ring pulse.
+  The verdict and ring tiles tilt up to 7 degrees toward the cursor. Shift+R replays the sequence.
+- **Section headings:** the heading text shifts weight 500 to 800 and brightens while its section is hovered or has
+  focus (reference: codefronts.com "Variable Font Weight Shift"). Each heading's text is wrapped in
+  `span.h-t[data-text]`; an invisible bold twin (`::after`) reserves the widest width, so nothing reflows.
+- **Sidebar:** hovering or Tab-focusing an unselected item blurs the other unselected items (1.6 px, opacity .45;
+  reference: "Blur to Focus Text Effect"). The selected item stays sharp.
+- **Cards:** a conic gradient ring in the card's colour circles its border on hover (reference: "Gradient Border
+  Draw"). It applies to `.card` (check cards and Run details cards), `details.cause`, `details.group`
+  (only when its own header is hovered), overview tiles except `.t-verdict`, status chips and service tiles. It is
+  off while a `details` card or group is open, in print, and static under reduced motion.
+- **Prototype build:** `results/prototype/build_prototype.py` now strips the layer that `report.py` bakes in before
+  adding the prototype files. Before, both layers ran at once and fought over the same tiles.
+- Verified in the user's Chrome (served from a local http server; the built-in browser pane blocks the CDN):
+  entrance sequence, meters, counters, ring on cards and groups, ring off when open, sidebar blur, weight shift with
+  an unchanged heading box. Not verified: frame-by-frame timing and the tilt by eye (the automated tab throttles
+  animation frames), Edge, Safari, a full suite run with this version.

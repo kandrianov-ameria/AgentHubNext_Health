@@ -19,6 +19,19 @@ Services and the rule for each, from agent-hub-backend:
   device-mapping   DeviceMappingClient (/starkit-device-mapping): only through
                    GetSrdRoutingStateAsync, i.e. send_file_to_srd and %online_srd_devices%
                    of those two agents.
+  mavslides-llm    MAV Slides engine (src/Windows/MavSlides/Engine/SlidesEngine.cs): the main and
+                   coder LLM are called by generate_presentation (structure, slide HTML) and
+                   edit_slide (_coder.CompleteAsync), agent "MavSlidesAgent" (SlidesService.IsAgent).
+  mavslides-openrouter
+                   OpenRouterImageClient: edit_slide_image (SlidesEngine.EditImageAsync) and, as the
+                   fallback for pictures, generate_presentation (SlideImageService.ProduceAsync).
+  mavslides-websearch, mavslides-tavily
+                   WebSearchClient and the image-search MCP: generate_presentation only
+                   (SlidesEngine web knowledge, SlideImageService.SearchAsync).
+  mavslides-vision ImageCorrection runs only when "remove watermarks" or "expand web images" is on in
+                   the AgentHub settings (EngineSettings.Images, both off by default). That setting
+                   lives on each PC (agenthub.settings.json), which the suite cannot see, so the
+                   service is always reported as unused.
   deepgram, whisper, vision, sam3
                    configured in the AgentHub section of pat-config; a service whose fields
                    are empty there is switched off by the app (AgentHubRemoteSettings).
@@ -43,6 +56,12 @@ from . import remote
 
 IMAGE_TO_3D = "ImageTo3DAgent"
 IMAGE_TO_VIDEO = "ImageToVideoAgent"
+MAV_SLIDES = "MavSlidesAgent"
+
+VISION_OPTIONS_OFF = ("MAV Slides calls its vision model only when 'remove watermarks from web images' or "
+                      "'expand web images' is switched on in the AgentHub settings window. Both are off by "
+                      "default (MavSlidesOptions) and the setting lives on each PC, where this suite cannot "
+                      "see it, so a failure here is reported as having no effect.")
 
 
 @dataclass(frozen=True)
@@ -55,7 +74,7 @@ class Usage:
 def _agent_facts(cfg) -> dict[str, dict]:
     reach = cfg.reachable_from_root()
     out = {}
-    for name in (IMAGE_TO_3D, IMAGE_TO_VIDEO):
+    for name in (IMAGE_TO_3D, IMAGE_TO_VIDEO, MAV_SLIDES):
         a = cfg.agent(name)
         out[name] = {
             "defined": a is not None,
@@ -128,6 +147,15 @@ def all_services() -> dict[str, Usage]:
         out["device-mapping"] = _from_agents("device-mapping", facts, {
             IMAGE_TO_3D: ({"send_file_to_srd"}, {"%online_srd_devices%"}),
             IMAGE_TO_VIDEO: ({"send_file_to_srd"}, {"%online_srd_devices%"})})
+        out["mavslides-llm"] = _from_agents("mavslides-llm", facts,
+                                            {MAV_SLIDES: ({"generate_presentation", "edit_slide"}, set())})
+        out["mavslides-openrouter"] = _from_agents("mavslides-openrouter", facts, {
+            MAV_SLIDES: ({"edit_slide_image", "generate_presentation"}, set())})
+        out["mavslides-websearch"] = _from_agents("mavslides-websearch", facts,
+                                                  {MAV_SLIDES: ({"generate_presentation"}, set())})
+        out["mavslides-tavily"] = _from_agents("mavslides-tavily", facts,
+                                               {MAV_SLIDES: ({"generate_presentation"}, set())})
+    out["mavslides-vision"] = Usage("mavslides-vision", False, VISION_OPTIONS_OFF)
     try:
         _f, section = remote.agenthub_section()
     except Exception:  # noqa: BLE001

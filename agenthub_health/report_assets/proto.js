@@ -1,7 +1,7 @@
 /* PROTOTYPE LAYER - behaviour. Motion (motion.dev) does all the animation.
    The report's own script keeps doing filtering, copy, theme and scroll-spy;
    this file only adds on top of it and never replaces its functions. */
-import { animate, inView, hover, press, scroll } from "https://cdn.jsdelivr.net/npm/motion@12.23.12/+esm";
+import { animate, inView, hover, press, scroll, stagger } from "https://cdn.jsdelivr.net/npm/motion@12.23.12/+esm";
 
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const $ = (s, r = document) => r.querySelector(s);
@@ -24,7 +24,8 @@ function reveal(el, delay) {
   c.finished.then(() => { el.removeAttribute("data-reveal"); el.style.opacity = ""; el.style.transform = ""; });
 }
 if (!reduce) {
-  inView("[data-reveal]", (el) => { reveal(el, nextDelay()); }, { amount: 0.1, margin: "0px 0px -4% 0px" });
+  /* verdict, ring and chips are choreographed by the overview block at the end of this file */
+  inView("[data-reveal]:not(.t-verdict):not(.t-ring):not(.chip)", (el) => { reveal(el, nextDelay()); }, { amount: 0.1, margin: "0px 0px -4% 0px" });
 }
 
 /* ---------- number count-up ---------- */
@@ -375,5 +376,85 @@ if (tools) {
     chip.addEventListener("pointerleave", () => { hovered = null; release(); });
   });
 })();
+
+/* ---------- overview choreography v2 ----------
+   One sequence instead of independent reveals: verdict tile -> its icon pops (spring) and the
+   headline blurs in -> ring tile -> chips fly in one by one, each with a share meter that grows
+   along its bottom edge (width = share of all checks). A red verdict shakes its icon once.
+   Verdict and ring tiles tilt a few degrees toward the cursor and spring back.
+   Shift+R replays the whole sequence (prototype only, for judging the timing). */
+(() => {
+  const bento = $(".bento");
+  if (!bento || reduce) return;
+  const verdict = $(".t-verdict", bento), ring = $(".t-ring", bento);
+  const chips = $$(".chip", bento);
+  const cnt = (chip) => counters.find((c) => c.el === $(".n", chip));
+  const total = chips.reduce((a, c) => a + (cnt(c) ? cnt(c).to : 0), 0) || 1;
+  const meters = chips.map((chip) => {
+    const c = cnt(chip);
+    if (!c || !c.to) return null;
+    const m = document.createElement("i");
+    m.className = "meter";
+    m.style.width = Math.max(6, (c.to / total) * 100) + "%";
+    chip.append(m);
+    return m;
+  });
+  const clean = (el) => { el.removeAttribute("data-reveal"); el.dataset.revealed = "1"; el.style.opacity = ""; el.style.transform = ""; };
+  const BAD = document.documentElement.dataset.verdict === "bad";
+
+  function play(replay) {
+    const ico = $(".v-ico", verdict), h = $(".v-head h2", verdict), p = $(".v-head p", verdict);
+    [verdict, ring].forEach((el, i) => el && animate(el, { opacity: [0, 1], y: [26, 0], scale: [0.97, 1] },
+      { duration: 0.75, delay: i * 0.14, ease: EASE }).finished.then(() => clean(el)));
+    if (ico) {
+      animate(ico, { opacity: [0, 1], scale: [0.3, 1], rotate: [-28, 0] },
+        { type: "spring", stiffness: 340, damping: 15, delay: 0.28 });
+      if (BAD) animate(ico, { x: [0, -7, 7, -5, 5, 0] }, { duration: 0.5, delay: 0.85 });
+    }
+    if (h && p) animate([h, p], { opacity: [0, 1], y: [12, 0], filter: ["blur(8px)", "blur(0px)"] },
+      { duration: 0.65, delay: stagger(0.09, { startDelay: 0.38 }), ease: EASE });
+    chips.forEach((chip, i) => {
+      animate(chip, { opacity: [0, 1], y: [18, 0], scale: [0.92, 1] },
+        { duration: 0.55, delay: 0.5 + i * 0.07, ease: EASE }).finished.then(() => clean(chip));
+      if (meters[i]) animate(meters[i], { scaleX: [0, 1] }, { duration: 1, delay: 0.75 + i * 0.07, ease: [0.16, 1, 0.3, 1] });
+      const c = cnt(chip);
+      if (replay && c) animate(0, c.to, { duration: 1.2, delay: 0.5 + i * 0.07, ease: [0.16, 1, 0.3, 1],
+        onUpdate: (v) => { c.el.textContent = c.pre + v.toFixed(c.dec) + c.suf; } });
+    });
+  }
+  inView(bento, () => { play(false); }, { amount: 0.25 });
+  addEventListener("keydown", (e) => {
+    if (e.shiftKey && e.key === "R" && !/^(INPUT|TEXTAREA)$/.test((e.target || {}).tagName)) {
+      bento.scrollIntoView({ block: "center" });
+      play(true);
+    }
+  });
+
+  [verdict, ring].forEach((el) => {
+    if (!el) return;
+    el.addEventListener("pointermove", (e) => {
+      const r = el.getBoundingClientRect();
+      const px = (e.clientX - r.left) / r.width - 0.5, py = (e.clientY - r.top) / r.height - 0.5;
+      animate(el, { rotateY: px * 7, rotateX: -py * 7, transformPerspective: 900 }, { duration: 0.3, ease: "easeOut" });
+    }, { passive: true });
+    el.addEventListener("pointerleave", () => { animate(el, { rotateX: 0, rotateY: 0 }, SPRING); });
+  });
+})();
+
+/* ---------- section heading text: variable font weight shift ----------
+   (reference: codefronts.com "Variable Font Weight Shift"). The weight itself is CSS-only (proto.css).
+   Here each heading's own text is wrapped in one span carrying data-text, so a hidden bold twin
+   (::after) can reserve the widest width and the heading never reflows while the weight changes. */
+$$("main.content > section > h2").forEach((h) => {
+  Array.from(h.childNodes).forEach((n) => {
+    if (n.nodeType !== 3 || !n.textContent.trim()) return;
+    const t = n.textContent.trim();
+    const wrap = document.createElement("span");
+    wrap.className = "h-t";
+    wrap.dataset.text = t;
+    wrap.textContent = t;
+    n.replaceWith(wrap);
+  });
+});
 
 window.__protoReady = true;

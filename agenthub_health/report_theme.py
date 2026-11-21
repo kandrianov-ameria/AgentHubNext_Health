@@ -18,7 +18,7 @@ from pathlib import Path
 ASSETS = Path(__file__).resolve().parent / "report_assets"
 
 _EARLY = (
-    '<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700'
+    '<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900'
     '&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">\n'
     "<script>(function(){var d=document.documentElement;"
     "if(!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)){"

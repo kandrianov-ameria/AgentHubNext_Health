@@ -65,6 +65,49 @@ def test_field_is_set(agenthub_section, field):
                                service=service.get(field, "aihub-service"))
 
 
+@pytest.mark.parametrize("field", ["MavStarkitApiKey", "DeviceMappingBearerToken"])
+def test_service_credential_is_set(agenthub_section, field):
+    """A service credential that moved into pat-config in 4.0.71 is present and not empty (an empty one is only
+    logged by name at start-up, then every call that needs it is refused)."""
+    v = agenthub_section.get(field)
+    if not (isinstance(v, str) and v.strip()):
+        svc, impact = remote.SERVICE_SETTINGS[field]
+        raise ConfigDefect(f"'{field}' is missing or empty in the AgentHub section.",
+                           f"{field} must be a non-empty string (RemoteSettingsManager.ApplyServiceCredentials).",
+                           impact, FIX, service=svc)
+
+
+def test_device_mapping_token_has_no_bearer_prefix(agenthub_section):
+    """DeviceMappingBearerToken is '<id>|<token>' without 'Bearer ' (docs/pat-config-api.md); the app adds the scheme."""
+    v = str(agenthub_section.get("DeviceMappingBearerToken") or "").strip()
+    if not v:
+        pytest.skip("DeviceMappingBearerToken is empty - reported by test_service_credential_is_set.")
+    if v.lower().startswith("bearer "):
+        raise ConfigDefect("DeviceMappingBearerToken starts with 'Bearer '.",
+                           "DeviceMappingClient, LogUploadService and SessionImageUploader send "
+                           "AuthenticationHeaderValue(\"Bearer\", token), so the value must not carry the scheme.",
+                           "The header becomes 'Bearer Bearer <token>' and the device mapping, the log upload and "
+                           "the session-image upload are refused.", FIX, service="log-upload")
+
+
+def test_mavslides_urls_are_absolute(agenthub_section):
+    """The URLs in AgentHub.MavSlides, when set, are absolute http(s) URLs (LlmClient and the MCP clients build
+    requests from them as they are)."""
+    ms = agenthub_section.get("MavSlides") or {}
+    bad = []
+    for name in ("LlmUrl", "CoderUrl", "VisionUrl", "OpenRouterUrl", "WebSearchMcpUrl"):
+        v = str(ms.get(name) or "").strip()
+        if v:
+            u = urlparse(v)
+            if u.scheme not in ("http", "https") or not u.netloc:
+                bad.append(f"{name}='{v}'")
+    if bad:
+        raise ConfigDefect(f"AgentHub.MavSlides has URLs that are not absolute: {', '.join(bad)}.",
+                           "MAV Slides endpoints must be absolute URLs.",
+                           "The matching MAV Slides requests fail when MavSlidesAgent uses them.", FIX,
+                           service="mavslides-llm")
+
+
 def test_whisper_url_is_absolute(agenthub_section):
     """WhisperUrl is an absolute http(s) URL."""
     v = str(agenthub_section.get("WhisperUrl") or "")

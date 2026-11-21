@@ -11,7 +11,7 @@ import uuid
 
 import pytest
 
-from agenthub_health import settings
+from agenthub_health import remote, settings
 from agenthub_health.probe import (ServiceFailure, call, contract, expect_ok, expect_refused,
                                    expect_status, need)
 
@@ -25,7 +25,8 @@ def _base() -> str:
 
 
 def _key() -> dict:
-    return {"X-API-Key": need("STARKIT_API_KEY")}
+    # Since 4.0.71 the key is AgentHub.MavStarkitApiKey of pat-config (RemoteSettingsManager.ApplyServiceCredentials).
+    return {"X-API-Key": remote.agenthub_value("MavStarkitApiKey", service=SERVICE)}
 
 
 def test_health_endpoint():

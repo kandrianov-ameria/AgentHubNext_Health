@@ -40,7 +40,7 @@ That is all. You do not need to install anything else by hand.
 The suite reads its settings from two files:
 
 - `suite.env` holds the addresses of the services, the environment to test (QAS by default), and timeouts. It has no passwords and is part of this repository, so you can read and change it.
-- `.env` holds the passwords. It is not in this repository, on purpose, because it holds live credentials.
+- `.env` holds the passwords. It is not in this repository, on purpose, because it holds live credentials. Since AgentHubNext 4.0.71 it holds only two: the access token of the AI-Hub service and the Seq key. All other keys (file storage, device mapping and log upload, MAV Slides, speech) are downloaded with the app's remote settings at the start of every run, exactly like the app does.
 
 On the first run, `run_tests.bat` creates it automatically from `secrets.local.txt`, the local, git-ignored build secrets file in the AgentHubNext repository (the app no longer has credentials in its source). It looks in `D:\MAVERICK\_AgentHubNext\agent-hub-backend`. If your copy is somewhere else, or the file is elsewhere, open a command prompt in this folder and run:
 
@@ -98,6 +98,7 @@ Yes. A normal run only asks questions and leaves almost nothing behind:
 - Each AI model: sends one very short request.
 - Speech, image recognition, segmentation: one small request each.
 - Image search (Tavily): one real search, which counts against the search quota.
+- MAV Slides: one short request to each of its AI models, one search with its own Tavily key, and one image request that is rejected as incomplete, so nothing is generated or billed.
 
 Nothing is generated (no 3D, no video) unless you add `--live`.
 
@@ -115,7 +116,7 @@ Everything marked "No" stays on your PC. The `.gitignore` file makes sure it is 
 
 ## When a password changes
 
-Some passwords are built into the AgentHubNext app when it is compiled. They come from `secrets.local.txt`, a local file in the AgentHubNext repository that is never uploaded to git. When the developers change one, put the new value in that file (ask the team lead for it) and update this suite once:
+Only the AI-Hub service token and the Seq key are built into the AgentHubNext app when it is compiled. They come from `secrets.local.txt`, a local file in the AgentHubNext repository that is never uploaded to git. When the developers change one, put the new value in that file (ask the team lead for it) and update this suite once. Every other key is changed in the remote settings (Maverick Config Manager) and needs nothing here:
 
 ```
 .venv\Scripts\python scripts\refresh_env.py

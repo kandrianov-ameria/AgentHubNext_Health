@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import bootstrap, dotnet, settings
-from .probe import ProbeResult, ServiceFailure, Status, SuiteIssue
+from .probe import ConfigDefect, ProbeResult, ServiceFailure, Status, SuiteIssue
 
 SERVICE = "aihub-service"
 ROOT_AGENT = "PointAndTalkAgent"
@@ -191,6 +191,49 @@ def agenthub_section() -> tuple[Fetch, dict | None]:
     if f.data is not None:
         section, _why = dotnet.read_agenthub_section(f.data)
     return f, section
+
+
+AGENTHUB_FIX = "Fill it in the AgentHub group of pat-config for this environment in Maverick Config Manager."
+
+# AgentHub setting -> (service key of services.py, what the app does without it). Since 4.0.71 these
+# credentials come from the AgentHub section (RemoteSettingsManager.ApplyServiceCredentials,
+# SlidesService.Configure); a missing one is only logged as a Warning by name.
+SERVICE_SETTINGS = {
+    "MavStarkitApiKey": ("mav-starkit-api",
+                         "Uploads, downloads, controller lists and send_file_to_srd call mav-starkit-api without "
+                         "an X-API-Key and are refused."),
+    "DeviceMappingBearerToken": ("log-upload",
+                                 "The device mapping, the session-log upload and the session-image upload send "
+                                 "'Bearer ' with no token and are refused."),
+}
+
+
+def agenthub_value(field: str, *, sub: str | None = None, service: str | None = None, impact: str = "") -> str:
+    """One value of the AgentHub section as the app reads it (trimmed; `sub` is a member of AgentHub.MavSlides).
+    Skips the check when there is no readable section (reported by test_11 and test_05); raises ConfigDefect
+    when the value is empty, with the rule named after the setting, so every check that needs it shares one cause.
+    Returns '' only when `service` is None (the caller decides what an empty value means)."""
+    import pytest
+
+    fetch_, section = agenthub_section()
+    fetch_.require("The AgentHub section of pat-config")
+    if section is None:
+        pytest.skip(f"pat-config/{settings.env_name()} has no usable 'AgentHub' section - see test_11_pat_config.")
+    holder = section.get(field) if sub is None else (section.get(field) or {}).get(sub)
+    value = str(holder or "").strip()
+    if not value and service is not None:
+        name = field if sub is None else f"{field}.{sub}"
+        svc, default_impact = SERVICE_SETTINGS.get(field, (service, ""))
+        raise ConfigDefect(f"AgentHub.{name} is missing or empty in the AgentHub section of pat-config.",
+                           f"AgentHubNext reads {name} from the AgentHub section of pat-config (since 4.0.71); "
+                           "it must be a non-empty string.",
+                           impact or default_impact, AGENTHUB_FIX, service=svc if sub is None else service)
+    return value
+
+
+def mavslides(sub: str, *, service: str | None = None, impact: str = "") -> str:
+    """AgentHub.MavSlides.<sub>, see agenthub_value()."""
+    return agenthub_value("MavSlides", sub=sub, service=service, impact=impact)
 
 
 def fresh_agenthub_problem() -> str:

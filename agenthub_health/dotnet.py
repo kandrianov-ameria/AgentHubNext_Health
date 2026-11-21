@@ -513,8 +513,40 @@ AGENTHUB_SETTINGS = {
     "DefaultDeepgramApiKey": "string", "WhisperUrl": "string", "WhisperModel": "string",
     "RemoteSyncOnSessionCreate": "bool", "VisionUrl": "string", "VisionModel": "string",
     "SamPredictTextUrl": "string", "SamPredictUrl": "string", "ProxyAuthHeader": "string",
+    # 4.0.71: service credentials moved here from the build secrets (AgentHubRemoteSettings.cs).
+    "MavStarkitApiKey": "string", "DeviceMappingBearerToken": "string",
+    "MavSlides": "object",
 }
+# MavSlidesRemoteSettings (AgentHubRemoteSettings.cs): the AgentHub.MavSlides object; every member a string.
+# The class has no [JsonPropertyName], so the names are the C# property names, matched case-insensitively.
+MAVSLIDES_SETTINGS = [
+    "LlmUrl", "LlmApiKey", "LlmModel", "CoderUrl", "CoderApiKey", "CoderModel",
+    "VisionUrl", "VisionApiKey", "VisionModel", "OpenRouterUrl", "OpenRouterApiKey",
+    "TavilyApiKey", "WebSearchMcpUrl", "WebSearchMcpToken",
+]
 SECTION_NAME = "AgentHub"
+
+
+def _read_mavslides(value: Any, key: str) -> tuple[dict | None, str]:
+    """AgentHubRemoteSettings.MavSlides: JSON null gives a new empty object (the setter), an object is bound
+    member by member, anything else makes System.Text.Json throw."""
+    out = {k: "" for k in MAVSLIDES_SETTINGS}
+    if value is None:
+        return out, ""
+    if not isinstance(value, dict):
+        return None, (f"'{key}' is a JSON {_kind(value)}, but AgentHubRemoteSettings.MavSlides is an object. "
+                      "System.Text.Json throws \"The JSON value could not be converted to "
+                      "AgentHub.RemoteConfiguration.MavSlidesRemoteSettings\"")
+    lower = {k.lower(): k for k in MAVSLIDES_SETTINGS}
+    for sub, v in value.items():
+        name = lower.get(sub.lower())
+        if name is None:
+            continue                      # ignored by the application
+        if v is not None and not isinstance(v, str):
+            return None, (f"'{key}.{sub}' is a JSON {_kind(v)}, but MavSlidesRemoteSettings.{name} is a string. "
+                          "System.Text.Json throws \"The JSON value could not be converted to System.String\"")
+        out[name] = v
+    return out, ""
 
 
 def read_agenthub_section(root: Any) -> tuple[dict | None, str]:
@@ -528,7 +560,8 @@ def read_agenthub_section(root: Any) -> tuple[dict | None, str]:
     if not isinstance(section, dict):
         return None, f"'{SECTION_NAME}' is a JSON {_kind(section)}, not an object"
     lower = {k.lower(): k for k in AGENTHUB_SETTINGS}
-    out: dict[str, Any] = {k: ("" if t == "string" else False) for k, t in AGENTHUB_SETTINGS.items()}
+    out: dict[str, Any] = {k: ("" if t == "string" else {m: "" for m in MAVSLIDES_SETTINGS} if t == "object"
+                               else False) for k, t in AGENTHUB_SETTINGS.items()}
     extra: dict[str, Any] = {}
     for key, value in section.items():
         name = lower.get(key.lower())
@@ -540,10 +573,14 @@ def read_agenthub_section(root: Any) -> tuple[dict | None, str]:
             if value is not None and not isinstance(value, str):
                 return None, (f"'{key}' is a JSON {_kind(value)}, but AgentHubRemoteSettings.{name} is a string. "
                               "System.Text.Json throws \"The JSON value could not be converted to System.String\"")
+        elif kind == "object":
+            value, why = _read_mavslides(value, key)
+            if value is None:
+                return None, why
         elif not isinstance(value, bool):
             return None, (f"'{key}' is a JSON {_kind(value)}, but AgentHubRemoteSettings.{name} is a boolean. "
                           "System.Text.Json throws \"The JSON value could not be converted to System.Boolean\"")
-        out[name] = value
+        out[name] = value if value is not None or kind != "string" else ""
     # Fields the application ignores stay visible to the checks that look at them
     # (SpeechToTextUrl, for example), under their original names.
     for k, v in extra.items():

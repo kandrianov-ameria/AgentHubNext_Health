@@ -27,7 +27,8 @@ RESULTS_DIR = PROJECT_ROOT / "results"
 REPORT_FILE = RESULTS_DIR / "result.html"
 # The remote configuration downloaded at the start of every run is saved here,
 # one folder per environment, and used as the fallback when a later download fails.
-# It holds live credentials (LLM provider keys, the Deepgram key, ProxyAuthHeader),
+# It holds live credentials (LLM provider keys, the Deepgram key, ProxyAuthHeader, and since 4.0.71 the
+# mav-starkit-api key, the device-mapping token and the MAV Slides keys),
 # so the folder is gitignored exactly like .env.
 REMOTE_CONFIG_DIR = PROJECT_ROOT / "remote_config"
 # One sub-folder per run: suite.log (what the suite did and how long it took),
@@ -50,11 +51,12 @@ URL_VARS = [
     "SEQ_BASE_URL",
 ]
 
-# Credentials the Windows build compiles in from secrets.local.txt. Set in .env only.
+# The bootstrap secrets of the Windows build: the ones AgentHubNext needs BEFORE it can download its
+# remote configuration (4.0.71, docs/pat-config-api.md). Set in .env only. The service credentials
+# that used to be here (mav-starkit-api, device mapping / log upload, MAV Slides) are now read from
+# the AgentHub section of pat-config at run time, like the Deepgram key (remote.credential()).
 SECRET_VARS = [
     "AIHUB_WIN_TOKEN",
-    "STARKIT_API_KEY",
-    "AIHUB_DEVICE_MAPPING_TOKEN",
     "SEQ_API_KEY",
 ]
 
@@ -100,5 +102,6 @@ TIMEOUT_GENERATION = float(get("AGENTHUB_HEALTH_GENERATION_TIMEOUT", "900"))
 TIMEOUT_CONFIG = float(get("AGENTHUB_HEALTH_CONFIG_TIMEOUT", "20"))
 
 # --- logs ------------------------------------------------------------------------
-# How many run folders logs/ keeps; older ones are deleted at the start of a run.
-LOG_RUNS_TO_KEEP = max(1, int(get("AGENTHUB_HEALTH_LOG_RUNS", "5")))
+# How many runs are kept (run folders in logs/, runs per environment in results/history.json);
+# older ones are deleted at every run.
+LOG_RUNS_TO_KEEP = max(1, int(get("AGENTHUB_HEALTH_LOG_RUNS", "7")))

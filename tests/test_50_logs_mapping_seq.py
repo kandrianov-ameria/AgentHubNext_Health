@@ -14,13 +14,17 @@ import json
 
 import pytest
 
+from agenthub_health import remote
 from agenthub_health.probe import ServiceFailure, Status, call, contract, expect_ok, expect_refused, need
 
 pytestmark = pytest.mark.smoke
 
 
 def _bearer() -> dict:
-    return {"Authorization": f"Bearer {need('AIHUB_DEVICE_MAPPING_TOKEN')}"}
+    # Since 4.0.71 the token is AgentHub.DeviceMappingBearerToken of pat-config, without "Bearer "
+    # (RemoteSettingsManager.ApplyServiceCredentials trims it; DeviceMappingClient, LogUploadService and
+    # SessionImageUploader send AuthenticationHeaderValue("Bearer", token)).
+    return {"Authorization": f"Bearer {remote.agenthub_value('DeviceMappingBearerToken', service='log-upload')}"}
 
 
 def test_device_mapping_answers():

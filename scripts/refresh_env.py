@@ -6,6 +6,12 @@ The app compiles them in from the developer's local, git-ignored
 `secrets.local.txt` in the repository root (build/Secrets.targets,
 secrets.local.example.txt). This script reads that same file.
 
+Since 4.0.71 only THREE bootstrap secrets are left in that file: the Seq key and the two AI-Hub
+service tokens (the macOS one is not used here). Every other service credential - mav-starkit-api,
+device mapping / log upload, MAV Slides, Deepgram, Whisper - comes from the AgentHub section of
+pat-config, which the suite downloads at the start of every run, so none of them is written to
+.env any more.
+
 Run this ONLY when a credential has been rotated. Normal test runs never touch
 the repository - they read .env and suite.env.
 
@@ -13,13 +19,15 @@ the repository - they read .env and suite.env.
     python scripts/refresh_env.py [path-to-agent-hub-backend] --secrets path\to\secrets.local.txt
 
 What it writes:
-  .env       the credentials only (gitignored). Values already set there for the
-             optional TWO_D_TO_*_BASIC_AUTH keys are kept.
+  .env       the credentials only (gitignored): AIHUB_WIN_TOKEN and SEQ_API_KEY. Values
+             already set there for the optional TWO_D_TO_*_BASIC_AUTH keys are kept.
+             Keys of earlier versions (STARKIT_API_KEY, AIHUB_DEVICE_MAPPING_TOKEN,
+             MAVSLIDES_*) are not carried over; the suite ignores them.
   suite.env  the base URLs are compared with the source; a URL that changed in
              the source is updated in place (suite.env is committed, so the
              change shows up in git). Nothing else in suite.env is touched.
 
-It refuses to write .env when any of the four values is missing, empty or still
+It refuses to write .env when any of the two values is missing, empty or still
 the build placeholder (__AGENTHUB_SECRET_<NAME>__), so a half-filled
 secrets.local.txt can never replace a working .env.
 """
@@ -43,10 +51,6 @@ SECRETS = {
     # Authorization header ("Bearer <id>|<token>"); the suite adds "Bearer " itself, so a
     # leading "Bearer " is removed here.
     "AIHUB_WIN_TOKEN": "AIHUB_SERVICE_AUTH_WINDOWS",
-    # ImageTo3DAgentSettings.MavStarkitApiKey (X-API-Key)
-    "STARKIT_API_KEY": "MAVSTARKIT_API_KEY",
-    # ImageTo3DAgentSettings.DeviceMappingBearerToken ("<id>|<token>", without "Bearer ")
-    "AIHUB_DEVICE_MAPPING_TOKEN": "DEVICE_MAPPING_BEARER_TOKEN",
     # Global.cs WriteTo.Seq(apiKey: ...)
     "SEQ_API_KEY": "AGENTHUB_SEQ_API_KEY",
 }
@@ -149,7 +153,8 @@ def read_env_file(path: Path) -> dict:
 
 
 def update_suite_urls(urls: dict) -> list:
-    """Set changed base URLs in suite.env in place. Returns (name, old, new) per change."""
+    """Set changed values (the base URLs) in suite.env in place.
+    Returns (name, old, new) per change."""
     path = PROJECT_ROOT / "suite.env"
     if not path.exists():
         print(f"\nsuite.env not found at {path} - restore it from the repository.")
@@ -221,7 +226,12 @@ def main() -> int:
     ]
     for k in OPTIONAL:
         lines.append(f"{k}={kept.get(k, '')}")
-    lines.append("")
+    lines += [
+        "",
+        "# The mav-starkit-api key, the device-mapping / log-upload token and the MAV Slides keys are not here:",
+        "# since AgentHubNext 4.0.71 they come from the AgentHub section of pat-config, which the suite downloads.",
+        "",
+    ]
     env_path.write_text("\n".join(lines), encoding="utf-8")
 
     print(f"\nWrote {env_path} (from {secrets_file})")
@@ -236,7 +246,7 @@ def main() -> int:
     if not changes:
         print("    unchanged - they match the source")
     for k, old, new in changes:
-        print(f"    {k:<28} {old} -> {new}")
+        print(f"    {k:<30} {old or '(empty)'} -> {new}")
     return 0
 
 

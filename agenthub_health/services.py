@@ -20,8 +20,12 @@ class Service:
 
 REBUILD = ("The credential is compiled into AgentHubNext at build time from the build secrets file "
            "(secrets.local.txt, build/Secrets.targets), so replacing it needs a new build, a new "
-           "package and a rollout through Maverick Web Manager. After updating secrets.local.txt, "
+           "package and a rollout through Maverick Web Manager. Since 4.0.71 only the AI-Hub service tokens and "
+           "the Seq key are build secrets (the rest comes from pat-config). After updating secrets.local.txt, "
            "run scripts/refresh_env.py so this suite tests the new value.")
+
+PAT_FIX = ("Update the value in the AgentHub group of pat-config for this environment in Maverick Config Manager - "
+           "no rebuild needed. Since 4.0.71 the app downloads it at start-up (RemoteSettingsManager).")
 
 SERVICES: dict[str, Service] = {s.key: s for s in [
     Service(
@@ -34,27 +38,27 @@ SERVICES: dict[str, Service] = {s.key: s for s in [
         REBUILD),
     Service(
         "device-mapping", "AI-Hub device mapping", "AI-Hub team",
-        "DEVICE_MAPPING_BEARER_TOKEN build secret (ImageTo3DAgentSettings.DeviceMappingBearerToken in src/Ameria.LlmExecutionEngine/Services/ImageTo3DAgentSettings.cs)",
+        "DeviceMappingBearerToken in the AgentHub section of pat-config (RemoteSettingsManager.ApplyServiceCredentials copies it into ImageTo3DAgentSettings.DeviceMappingBearerToken)",
         "send_file_to_srd and the %online_srd_devices% prompt placeholder of ImageTo3DAgent and "
         "ImageToVideoAgent cannot resolve which Starkit controllers are paired with this AgentHub "
         "(DeviceMappingClient, ImageGenerationAgentToolsBase.GetSrdRoutingStateAsync).",
-        REBUILD),
+        PAT_FIX),
     Service(
         "log-upload", "AI-Hub log upload", "AI-Hub team",
-        "DEVICE_MAPPING_BEARER_TOKEN build secret (ImageTo3DAgentSettings.DeviceMappingBearerToken; "
+        "DeviceMappingBearerToken in the AgentHub section of pat-config (via ImageTo3DAgentSettings.DeviceMappingBearerToken; "
         "LogUploadService sends it to /api/logs-session, SessionImageUploader to /api/logs/session-image)",
         "Session log archives are not accepted - they stay in Temp/AgenHubLogs and are retried every "
         "5 minutes (README.md, Runtime layout). The screenshots and crops that AgentHubNext sends right "
         "after capture for online monitoring are lost: SessionImageUploader does not retry, and only the "
         "archive upload carries the same files later.",
-        REBUILD),
+        PAT_FIX),
     Service(
         "mav-starkit-api", "mav-starkit-api", "mav-starkit-api developer",
-        "MAVSTARKIT_API_KEY build secret (ImageTo3DAgentSettings.MavStarkitApiKey in src/Ameria.LlmExecutionEngine/Services/ImageTo3DAgentSettings.cs)",
+        "MavStarkitApiKey in the AgentHub section of pat-config (RemoteSettingsManager.ApplyServiceCredentials copies it into ImageTo3DAgentSettings.MavStarkitApiKey)",
         "generate_3d_object and generate_video cannot store their GLB/MP4 results, the existing-assets "
         "lists injected into the ImageTo3DAgent and ImageToVideoAgent prompts cannot be built, and "
         "send_file_to_srd cannot queue show_file commands for the Sony SRD.",
-        REBUILD),
+        PAT_FIX),
     Service(
         "2d-to-3d", "2d-to-3d service", "2d-to-3d service owner",
         "TwoDToThreeDBasicAuth in ImageTo3DAgentSettings.cs (not set by default - the service has auth disabled)",
@@ -92,6 +96,41 @@ SERVICES: dict[str, Service] = {s.key: s for s in [
         "SamPredictTextUrl, SamPredictUrl and ProxyAuthHeader in the AgentHub section of pat-config",
         "Named objects cannot be turned into pixel masks, so nothing lights up under the user's pointer.",
         "Update the AgentHub section in Maverick Config Manager - no rebuild needed."),
+    Service(
+        "mavslides-llm", "MAV Slides LLM (main and coder)", "MAV Slides developer / owner of the LLM endpoint",
+        "MavSlides.LlmUrl / LlmApiKey / LlmModel and MavSlides.Coder* in the AgentHub section of pat-config "
+        "(SlidesService.Configure, EngineSettings.Create; coder values left empty fall back to the main LLM, "
+        "EngineSettings.Fallback)",
+        "generate_presentation and edit_slide of MavSlidesAgent fail: LlmClient throws \"LLM '<name>' ... failed\" "
+        "after 3 attempts. The main LLM writes attributes, structure and image prompts, the coder LLM the slide HTML.",
+        PAT_FIX),
+    Service(
+        "mavslides-vision", "MAV Slides vision LLM", "MAV Slides developer / owner of the LLM endpoint",
+        "MavSlides.Vision* in the AgentHub section of pat-config (empty values fall back to the main LLM)",
+        "Only when 'remove watermarks' or 'expand web images' is on in the AgentHub settings (both off by default, "
+        "MavSlidesOptions): web images cannot be checked for watermarks or expanded (ImageCorrection.cs).",
+        PAT_FIX),
+    Service(
+        "mavslides-openrouter", "MAV Slides image generation (OpenRouter)", "Owner of the OpenRouter account",
+        "MavSlides.OpenRouterApiKey and MavSlides.OpenRouterUrl in the AgentHub section of pat-config (OpenRouterImageClient.cs; "
+        "an empty url means https://openrouter.ai/api/v1)",
+        "edit_slide_image of MavSlidesAgent cannot change pictures; during generate_presentation, pictures the web "
+        "search did not supply fall back to a local placeholder (SlideImageService.ProduceAsync).",
+        PAT_FIX),
+    Service(
+        "mavslides-websearch", "MAV Slides web-search MCP", "AI-Hub MCP Servers package owner",
+        "MavSlides.WebSearchMcpUrl, MavSlides.WebSearchMcpToken and MavSlides.TavilyApiKey in the AgentHub section "
+        "of pat-config (WebSearchClient in src/Windows/MavSlides/Engine/McpClients.cs)",
+        "generate_presentation continues without web knowledge (SlidesEngine logs 'Web search ... failed, continuing "
+        "without it'), so new presentations are written from the model's own knowledge only.",
+        PAT_FIX),
+    Service(
+        "mavslides-tavily", "MAV Slides Tavily key (image search)", "Owner of the Tavily account",
+        "MavSlides.TavilyApiKey in the AgentHub section of pat-config (--api-key of the local image-search MCP and "
+        "api-key header of the web-search MCP, McpClients.cs)",
+        "Pictures of new presentations are not searched on the web; SlideImageService falls back to OpenRouter "
+        "generation, then to a local placeholder.",
+        PAT_FIX),
     Service(
         "llm", "LLM provider", "Maverick Config Manager (AI providers)",
         "headers of the provider record returned by /api/llm-providers",
