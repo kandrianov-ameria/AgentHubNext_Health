@@ -90,6 +90,22 @@ def _badge(text, kind: str) -> str:
     return f'<span class="badge badge-{kind}">{e(text)}</span>'
 
 
+def _app_version(av: dict | None) -> str:
+    """Header chips: the AgentHubNext version the suite was written against and the one on GitHub.
+    Red and glowing when GitHub is ahead, green otherwise, grey when GitHub could not be read."""
+    if not av:
+        return ""
+    state = av.get("state", "unknown")
+    remote = av.get("remote") or "unknown"
+    tip = f"Branch {av.get('branch', '')} on GitHub. " + {
+        "ahead": "GitHub is ahead of the version this suite was written against: review the new commits.",
+        "current": "GitHub has no newer version than the suite was written against.",
+    }.get(state, av.get("detail") or "Could not be read; see suite.log.")
+    return (f'<span class="appver" title="{e(tip)}"><span class="appver-l">AgentHubNext</span>'
+            f'<span class="appver-i">suite <b>{e(av.get("used") or "?")}</b></span>'
+            f'<span class="appver-i appver-{e(state)}">GitHub <b>{e(remote)}</b></span></span>')
+
+
 def _ico(name: str, cls: str = "i") -> str:
     return f'<svg class="{cls}" aria-hidden="true"><use href="#i-{name}"/></svg>'
 
@@ -562,6 +578,14 @@ kbd{font:500 11px var(--fm);padding:1px 6px;border-radius:6px;border:1px solid v
 .main{margin-left:236px;min-height:100vh;display:flex;flex-direction:column}
 .top{position:sticky;top:0;z-index:25;padding:14px 40px 12px;border-bottom:1px solid var(--line);
 background:color-mix(in srgb,var(--bg) 74%,transparent);backdrop-filter:blur(16px) saturate(1.5)}
+.appver{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:6px;padding-left:12px;border-left:1px solid var(--line-2)}
+.appver-l{color:var(--muted)}
+.appver-i b{font-weight:600;font-family:var(--fm,monospace)}
+.appver-current b{color:var(--ok)}
+.appver-unknown b{color:var(--muted)}
+.appver-ahead b{color:var(--bad-fill);text-shadow:0 0 6px var(--bad-fill),0 0 14px var(--bad-fill);animation:appverGlow 1.8s ease-in-out infinite alternate}
+@keyframes appverGlow{from{text-shadow:0 0 3px var(--bad-fill),0 0 8px var(--bad-fill)}to{text-shadow:0 0 8px var(--bad-fill),0 0 20px var(--bad-fill)}}
+@media (prefers-reduced-motion:reduce){.appver-ahead b{animation:none}}
 .top-row{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
 .top h1{margin:0;font:650 19px/1.2 var(--f);letter-spacing:-.35px;color:var(--text)}
 .meta{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12.5px;flex-wrap:wrap}
@@ -1052,7 +1076,7 @@ def render(records, collection_issues, meta) -> str:
   <header class="top">
     <div class="top-row">
       <h1>AgentHubNext dependency health</h1>
-      <div class="meta">{_badge(meta['environment'], 'primary')}<span>{e(_ts(meta['finished']))}</span><span>&middot; {e(duration)}</span>
+      <div class="meta">{_badge(meta['environment'], 'primary')}<span>{e(_ts(meta['finished']))}</span><span>&middot; {e(duration)}</span>{_app_version(meta.get('app_version'))}
         <button class="btn" id="themeBtn" type="button" onclick="cycleTheme()" title="Theme: auto / light / dark">{_ico('monitor')}<span class="t">Auto</span></button></div>
     </div>
     <div class="toolbar">

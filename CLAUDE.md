@@ -15,7 +15,8 @@ the shape the app parses. It must run on **any Windows PC with Python 3.9+**.
 - No checks may run on a Maverick machine or on local Maverick software.
 - No macOS services are in scope.
 - A normal run reads `.env` (credentials) and `suite.env` (everything else) and
-  downloads the remote configuration. **It never reads the repository.**
+  downloads the remote configuration. **It never reads the local repository.** The one exception (1.11.0)
+is the version check: one `git fetch` of the AgentHub branch from GitHub (see Version 1.11.0).
 
 One command runs everything: `run_tests.bat`. The report is written to
 `results\result.html`, the logs to `logs\<start time>\`.
@@ -324,7 +325,7 @@ pytest.ini               pythonpath=., --strict-markers, --continue-on-collectio
                          markers: config, smoke, live
 .gitattributes           tests/assets/* binary; *.bat eol=crlf
 agenthub_health/
-  __init__.py            __version__ (bump on every change; currently 1.10.0)
+  __init__.py            __version__ (bump on every change; currently 1.11.0)
   __main__.py            opens the run logs, copies the console to console.log, runs pytest with the
                          plugin; -m "not live" unless --live; opens the report
   settings.py            paths, .env + suite.env loading, URL/secret var lists, fix_for() hints,
@@ -945,3 +946,21 @@ Report motion, designed in the prototype first (`results/prototype/`, gitignored
   entrance sequence, meters, counters, ring on cards and groups, ring off when open, sidebar blur, weight shift with
   an unchanged heading box. Not verified: frame-by-frame timing and the tilt by eye (the automated tab throttles
   animation frames), Edge, Safari, a full suite run with this version.
+
+### Version 1.11.0 (2026-11-23, no full real run yet)
+
+- New `agenthub_health/repo_version.py`, called by `__main__` before pytest starts. It fetches one commit of
+  `AGENTHUB_REPO_BRANCH` (suite.env, `next`) from `AGENTHUB_REPO_URL` without file contents (`--depth 1
+  --filter=blob:none`) into `remote_config/agenthub-next-git`, and reads `<Version>` from
+  `src/AgentHub/AgentHub.csproj`. It uses this PC's own Git sign-in, prompts are off, nothing is stored. It never
+  reads the local clone and never fails the run: if git, the network or access is missing, the report shows the
+  GitHub version as "unknown" and `suite.log` says why.
+- "Version the suite uses" = `AGENTHUB_VERSION_USED` in suite.env (4.0.71). It cannot be derived from code: **bump it by hand
+  after reviewing the suite against a new AgentHubNext version.** Compared numerically.
+- Report header (`report._app_version`, in `div.meta`): `suite <used>` and `GitHub <remote>`. GitHub ahead = red and
+  glowing (static under reduced motion); equal or behind = green; unknown = grey. The tooltip names the branch.
+- Checked on 2026-11-23 from the user's PC: `next` has 4.0.72, `main` has 4.0.69. The branch is a choice: the suite was
+  built against `next`; set `AGENTHUB_REPO_BRANCH=main` to follow `main`.
+- Verified: the fetch and version read against the real GitHub repo; the header rendered by `report.render()` with a
+  synthetic run, red state in the in-app browser, green state by class swap only. Not verified: a full suite run, a PC
+  without GitHub access, Edge, Safari.

@@ -115,6 +115,8 @@ def main(argv: list[str]) -> int:
               f"{' - including live generation' if live else ''}")
     print(header)
     runlog.console_line(header)
+    from . import repo_version
+    repo_version.check()  # GitHub version of AgentHubNext, for the report header; never fails the run
     try:
         code = pytest.main(args)
     except BaseException:

@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from . import __version__, bootstrap, causes, redact, runlog, settings, services, usage
+from . import __version__, bootstrap, causes, redact, repo_version, runlog, settings, services, usage
 from . import report as html_report
 from .probe import PROBES, ConfigDefect, ServiceFailure, SuiteIssue, set_current_test
 from .runlog import log
@@ -333,6 +333,7 @@ def pytest_sessionfinish(session, exitstatus):
                           for u in usage.all_services().values()],
         "remote_config_dir": str(bootstrap.env_dir()),
         "log_dir": str(runlog.RUN_DIR or ""),
+        "app_version": vars(repo_version.check()),
     }
     path = html_report.render(list(_records.values()), _collection_issues, meta)
     log.info("Report written to %s in %.1f s", path, time.time() - t_report)
