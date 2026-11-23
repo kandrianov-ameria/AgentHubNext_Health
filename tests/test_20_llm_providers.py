@@ -29,7 +29,8 @@ def _providers_under_test():
         return [("unavailable", exc)]
     used: dict = {}
     for a in cfg.agents:
-        for role, pid in (("primary", a.llm_provider_id), ("secondary", a.secondary_llm_provider_id)):
+        for role, pid in (("primary", a.llm_provider_id), ("secondary", a.secondary_llm_provider_id),
+                          ("low tier", a.low_tier_llm_provider_id)):
             if pid is not None:
                 used.setdefault(pid, []).append(f"{a.name} ({role})")
     out = []

@@ -126,6 +126,18 @@ def test_agent_secondary_provider_is_valid(cfg):
     _defect(errors, "secondary_llm_provider_id must exist and differ from the primary provider.")
 
 
+def test_agent_low_tier_provider_exists(cfg):
+    """A low-tier provider (low_tier_llm_provider_id, 4.0.72), when set, exists. The app only warns and ignores it."""
+    with unused_by_app("RemoteConfigurationManager.ValidateLowTierProvider logs a Warning and drops an unknown "
+                       "low-tier id; the configuration still loads and the primary and secondary providers are used."):
+        _defect([f"Agent '{_s(a.name)}' has invalid Low Tier LLM Provider Id '{a.low_tier_llm_provider_id}'."
+                 for a in cfg.agents
+                 if a.low_tier_llm_provider_id is not None and cfg.provider(a.low_tier_llm_provider_id) is None],
+                "low_tier_llm_provider_id must reference an existing provider.",
+                impact="None for loading. The cheaper provider for simple prompts (thinking status, memory "
+                       "consolidation, suggested question) is not used; the app falls back to primary and secondary.")
+
+
 def test_assigned_agents_exist(cfg):
     """Every agent named in AssignedAgents exists."""
     names = {a.name for a in cfg.agents}

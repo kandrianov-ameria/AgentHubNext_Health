@@ -228,7 +228,8 @@ _DEFAULTS = {"string": None, "int": 0, "int?": None, "double": 0.0, "bool": Fals
 
 # [JsonProperty] names and CLR types of the DTOs in src/AgentHub/RemoteConfiguration/.
 AGENT_DTO = {"category": "string", "keyword": "string", "description": "string", "version": "double",
-             "llm_provider_id": "int", "secondary_llm_provider_id": "int?", "json_schema": "jobject"}
+             "llm_provider_id": "int", "secondary_llm_provider_id": "int?", "low_tier_llm_provider_id": "int?",
+             "json_schema": "jobject"}
 TOOL_DTO = {"category": "string", "keyword": "string", "json_schema": "jobject"}
 PROVIDER_DTO = {"id": "int", "name": "string", "headers": "string", "base_url": "string", "model": "string",
                 "provider_type": "string", "primary": "bool"}
@@ -395,6 +396,7 @@ def load(raw: dict[str, Any], env: str) -> Loaded:
             "name": jtoken_string(schema, "Name", w, f),
             "llm_provider_id": dto["llm_provider_id"],
             "secondary_llm_provider_id": dto["secondary_llm_provider_id"],
+            "low_tier_llm_provider_id": dto["low_tier_llm_provider_id"],
             "schema": schema,
             "AgentDescription": jtoken_string(schema, "AgentDescription", w, f),
             "InnerInstructions": jtoken_string(schema, "InnerInstructions", w, f),
@@ -455,6 +457,8 @@ def load(raw: dict[str, Any], env: str) -> Loaded:
             hit = hit or lookup(lambda p, a=a: p["id"] == a["llm_provider_id"])
             if a["secondary_llm_provider_id"] is not None:
                 hit = hit or lookup(lambda p, a=a: p["id"] == a["secondary_llm_provider_id"])
+            if a["low_tier_llm_provider_id"] is not None:   # ValidateLowTierProvider (4.0.72): Any(x => x.Id == id)
+                hit = hit or lookup(lambda p, a=a: p["id"] == a["low_tier_llm_provider_id"])
         hit = hit or lookup(lambda p: p["primary"] and p["provider_type"] == "open_ai_embedding")
         if hit:
             f.fatal.append("/api/llm-providers contains a null entry that the provider lookups reach. "

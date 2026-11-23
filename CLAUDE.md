@@ -964,3 +964,20 @@ Report motion, designed in the prototype first (`results/prototype/`, gitignored
 - Verified: the fetch and version read against the real GitHub repo; the header rendered by `report.render()` with a
   synthetic run, red state in the in-app browser, green state by class swap only. Not verified: a full suite run, a PC
   without GitHub access, Edge, Safari.
+
+### Version 1.12.0 (2026-11-23, no full real run yet)
+
+- Pulled backend 4.0.72 (commit e14e73a, `next`, one commit after 6024af4): optional `low_tier_llm_provider_id` per
+  agent (`RemoteAgentDto`, `AgentDto.LowTierLlmProviderId`), a cheaper provider tried first for thinking status, memory
+  consolidation and suggested question, then primary and secondary (`Agents/LlmProviderChain.cs`). An unknown id is not a
+  configuration error: `RemoteConfigurationManager.ValidateLowTierProvider` logs a Warning and drops it. No change to
+  pat-config, credentials, base URLs, `docs/` request shapes or other clients (diff of `RemoteConfiguration/`, `AgentDto.cs`
+  read line by line; the rest searched for URLs, headers and endpoints only).
+- Suite: `dotnet.AGENT_DTO` reads the field as `int?` (a non-numeric value fails the load like the other ids; a null provider
+  entry reached by the new lookup is reported); `remote.Agent.low_tier_llm_provider_id`; new `test_01::test_agent_low_tier_provider_exists`
+  (marked no-effect, as the app only warns); `test_20` also probes a provider used as low tier (role "low tier").
+  `test_agent_providers_are_usable` is unchanged on purpose: the chain skips uncreatable providers.
+- Not known: whether QAS already carries `low_tier_llm_provider_id`; a failing low-tier provider in `test_20` is reported as
+  affecting the app although the app falls back to primary and secondary.
+- `AGENTHUB_VERSION_USED` set to 4.0.72. Mock modes `lowtier-ok`, `lowtier-bad`, `lowtier-badtype` added; verified on a copy with a
+  fake `.env`: ok passes, bad gives the one check (no-effect), badtype is a load failure. Not verified: a real run.

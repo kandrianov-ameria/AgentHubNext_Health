@@ -21,6 +21,7 @@ The scenario is read from mode.txt next to this script on every request:
     notes       only values Json.NET converts silently
     pat-bad     RemoteSyncOnSessionCreate is the string "true" (System.Text.Json throws)
     pat-down    pat-config answers 502
+    lowtier-ok / lowtier-bad / lowtier-badtype   low_tier_llm_provider_id valid / unknown id (warning only) / "abc" (throws)
     dupheader   a provider has the Authorization header twice (GetHeaders throws)
     imagegen    PointAndTalkAgent hands off to an ImageTo3DAgent with generate_3d_object, and
                 WhisperUrl is empty (exercises agenthub_health/usage.py)
@@ -51,7 +52,7 @@ PORT = 8765
 def agents(mode):
     base = [
         {"category": "QAS", "keyword": "PointAndTalkAgent", "version": 1, "llm_provider_id": 1,
-         "secondary_llm_provider_id": None,
+         "secondary_llm_provider_id": None, "low_tier_llm_provider_id": None,
          "json_schema": {"Name": "PointAndTalkAgent", "InnerInstructions": "Use memory_search. Hand off to HelperAgent.",
                          "AssignedTools": ["memory_search"], "AssignedMCPs": ["[srv]lookup"],
                          "AssignedAgents": ["HelperAgent"], "MaxTokenCount": 1000}},
@@ -79,6 +80,12 @@ def agents(mode):
     if mode == "notes":
         base[0]["json_schema"]["MaxTokenCount"] = "1000"   # note only
         base[1]["llm_provider_id"] = "1"                   # note only
+    if mode == "lowtier-ok":
+        base[0]["low_tier_llm_provider_id"] = 1
+    if mode == "lowtier-bad":
+        base[0]["low_tier_llm_provider_id"] = 99           # app warns and ignores (4.0.72)
+    if mode == "lowtier-badtype":
+        base[0]["low_tier_llm_provider_id"] = "abc"        # Json.NET throws
     return base
 
 SLIDES_TOOLS = ["generate_presentation", "open_presentation", "show_slide", "edit_slide", "edit_slide_image",

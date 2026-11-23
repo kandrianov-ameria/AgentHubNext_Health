@@ -101,6 +101,7 @@ class Agent:
     llm_provider_id: Any
     secondary_llm_provider_id: Any
     schema: dict
+    low_tier_llm_provider_id: Any = None
     assigned_tools: list = field(default_factory=list)
     assigned_mcps: list = field(default_factory=list)
     assigned_agents: list = field(default_factory=list)
@@ -156,6 +157,7 @@ def load_result() -> Config:
     loaded = dotnet.load(raw, env)
     agents = [Agent(keyword=a["keyword"], name=a["name"], llm_provider_id=a["llm_provider_id"],
                     secondary_llm_provider_id=a["secondary_llm_provider_id"], schema=a["schema"],
+                    low_tier_llm_provider_id=a.get("low_tier_llm_provider_id"),
                     assigned_tools=list(a["AssignedTools"] or []), assigned_mcps=list(a["AssignedMCPs"] or []),
                     assigned_agents=list(a["AssignedAgents"] or []), instructions=a["InnerInstructions"] or "")
               for a in loaded.agents]
