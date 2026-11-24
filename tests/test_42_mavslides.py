@@ -250,12 +250,13 @@ def test_tavily_key_returns_images():
 # --- the configuration side ---------------------------------------------------------------------
 
 EXPECTED_TOOLS = ["generate_presentation", "open_presentation", "show_slide", "edit_slide", "edit_slide_image",
+                  "insert_slide", "delete_slides", "undo_change", "redo_change",
                   "get_presentation_state", "close_presentation"]
 PLACEHOLDER = "%existing_presentations%"
 
 
 def test_agent_has_its_tools_and_prompt_placeholder():
-    """MavSlidesAgent, when this environment defines it, is assigned the seven tools MavSlidesAgentTools implements and
+    """MavSlidesAgent, when this environment defines it, is assigned the eleven tools MavSlidesAgentTools implements and
     keeps the %existing_presentations% placeholder its prompt relies on."""
     cfg = remote.config()
     agent = cfg.agent(usage.MAV_SLIDES)
@@ -265,7 +266,7 @@ def test_agent_has_its_tools_and_prompt_placeholder():
     if missing:
         raise ConfigDefect(
             f"MavSlidesAgent is not assigned: {', '.join(missing)}.",
-            "SlidesService.IsSlidesTool / MavSlidesAgentTools implement these tool names; the agent prompt names all seven.",
+            "SlidesService.IsSlidesTool / MavSlidesAgentTools implement these tool names; the agent prompt names all eleven (4.0.74 added insert_slide, delete_slides, undo_change, redo_change).",
             "The agent tells the user to use a tool it does not have, or cannot perform that part of the request.",
             "Assign the missing tools to MavSlidesAgent in Maverick Config Manager.")
     if PLACEHOLDER not in (agent.instructions or ""):

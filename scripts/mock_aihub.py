@@ -25,7 +25,7 @@ The scenario is read from mode.txt next to this script on every request:
     dupheader   a provider has the Authorization header twice (GetHeaders throws)
     imagegen    PointAndTalkAgent hands off to an ImageTo3DAgent with generate_3d_object, and
                 WhisperUrl is empty (exercises agenthub_health/usage.py)
-    slides      PointAndTalkAgent hands off to MavSlidesAgent (7 tools, prompt with the placeholder);
+    slides      PointAndTalkAgent hands off to MavSlidesAgent (11 tools, prompt with the placeholder);
                 the MAV Slides endpoints below answer (LLM /v1/chat/completions, OpenRouter /openrouter/images,
                 web-search MCP /mcp, Tavily /tavily/search). Fake keys: Authorization "Bearer slideskeyslideskey1"
     slides-rejected   as slides, but OpenRouter and Tavily reject the key (401) and the LLM answers an empty message
@@ -89,6 +89,7 @@ def agents(mode):
     return base
 
 SLIDES_TOOLS = ["generate_presentation", "open_presentation", "show_slide", "edit_slide", "edit_slide_image",
+                "insert_slide", "delete_slides", "undo_change", "redo_change",
                 "get_presentation_state", "close_presentation"]
 
 def tools(mode):

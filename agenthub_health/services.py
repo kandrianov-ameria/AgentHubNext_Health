@@ -101,7 +101,7 @@ SERVICES: dict[str, Service] = {s.key: s for s in [
         "MavSlides.LlmUrl / LlmApiKey / LlmModel and MavSlides.Coder* in the AgentHub section of pat-config "
         "(SlidesService.Configure, EngineSettings.Create; coder values left empty fall back to the main LLM, "
         "EngineSettings.Fallback)",
-        "generate_presentation and edit_slide of MavSlidesAgent fail: LlmClient throws \"LLM '<name>' ... failed\" "
+        "generate_presentation, edit_slide and insert_slide of MavSlidesAgent fail: LlmClient throws \"LLM '<name>' ... failed\" "
         "after 3 attempts. The main LLM writes attributes, structure and image prompts, the coder LLM the slide HTML.",
         PAT_FIX),
     Service(

@@ -325,7 +325,7 @@ pytest.ini               pythonpath=., --strict-markers, --continue-on-collectio
                          markers: config, smoke, live
 .gitattributes           tests/assets/* binary; *.bat eol=crlf
 agenthub_health/
-  __init__.py            __version__ (bump on every change; currently 1.11.0)
+  __init__.py            __version__ (bump on every change; currently 1.12.1)
   __main__.py            opens the run logs, copies the console to console.log, runs pytest with the
                          plugin; -m "not live" unless --live; opens the report
   settings.py            paths, .env + suite.env loading, URL/secret var lists, fix_for() hints,
@@ -397,7 +397,7 @@ is per subject, so one bad token is one root cause, not one per endpoint.
 | `test_31_generation_services` | 2d-to-3d and 2d-to-video: health; empty task returns 400; unknown file token returns 400; unknown task returns 404 |
 | `test_40_mcp_servers` | Definition is well formed (all servers); initialize handshake for `streamable_http` servers only (stdio servers run only on a Maverick machine and get no handshake check from 1.2.0). Servers no agent assigns are marked no-effect. |
 | `test_41_tavily_image_mcp` | stdio record passes `--api-key` and `--folder`; Tavily `/search` returns images. **One real, quota-using search per run.** |
-| `test_42_mavslides` | MAV Slides (1.8.0; settings from `AgentHub.MavSlides` of pat-config since 1.9.0): the main, coder and vision LLM each answer `chat/completions` (vision with an image); OpenRouter `/images` refuses no key, and accepts the key (a request without a prompt must be rejected as invalid, not unauthorized; 402 = no credit); web-search MCP `initialize`; the MAV Slides Tavily key returns images (**one more quota-using search per run**); `MavSlidesAgent` has its 7 tools and `%existing_presentations%`. Marker `live`: one real OpenRouter image (billable). An empty value skips the check when the service is unused, and is a `ConfigDefect` (named `AgentHub.MavSlides.<Field>`) when it is used. |
+| `test_42_mavslides` | MAV Slides (1.8.0; settings from `AgentHub.MavSlides` of pat-config since 1.9.0): the main, coder and vision LLM each answer `chat/completions` (vision with an image); OpenRouter `/images` refuses no key, and accepts the key (a request without a prompt must be rejected as invalid, not unauthorized; 402 = no credit); web-search MCP `initialize`; the MAV Slides Tavily key returns images (**one more quota-using search per run**); `MavSlidesAgent` has its 11 tools (7 until 1.12.1) and `%existing_presentations%`. Marker `live`: one real OpenRouter image (billable). An empty value skips the check when the service is unused, and is a `ConfigDefect` (named `AgentHub.MavSlides.<Field>`) when it is used. |
 | `test_50_logs_mapping_seq` | Device mapping (service `device-mapping`); log-upload token for `/api/logs-session` and `/api/logs/session-image` (refused without a token; token accepted; service `log-upload`, always used); Seq ingestion |
 | `test_90_live_generation` | Marker `live`: real 3D and stereo video generation. Slow and billable; only with `--live`. |
 
@@ -981,3 +981,18 @@ Report motion, designed in the prototype first (`results/prototype/`, gitignored
   affecting the app although the app falls back to primary and secondary.
 - `AGENTHUB_VERSION_USED` set to 4.0.72. Mock modes `lowtier-ok`, `lowtier-bad`, `lowtier-badtype` added; verified on a copy with a
   fake `.env`: ok passes, bad gives the one check (no-effect), badtype is a load failure. Not verified: a real run.
+
+### Version 1.12.1 (2026-11-24, no real run yet)
+
+- Pulled backend 4.0.74 (commit aa9e357, `next`, one commit after e14e73a; 4.0.73 was not a separate commit on `next`):
+  MAV Slides gets four tools, `insert_slide`, `delete_slides`, `undo_change`, `redo_change` (`SlidesService.ToolNames`,
+  `src/remote_prompts/windows/pat-tools/*.json`, `MavSlidesAgent.agent.json` and its prompt). `insert_slide` calls the main
+  LLM (`_llm`, plans the slide) and the coder (`_coder`, writes the HTML) in `SlidesEngine`. No change to pat-config,
+  credentials, base URLs, `docs/` or other clients (agent, tool and `SlidesService` files read line by line; the rest of
+  `src/Windows/MavSlides` and `src/AgentHub` searched for URLs, headers and HTTP calls only).
+- Suite: `test_42::EXPECTED_TOOLS` now has 11 tools; `usage.py` rule `mavslides-llm` adds `insert_slide`; `services.py` impact
+  text; `mock_aihub.py` `SLIDES_TOOLS`. The undo/redo/delete tools call no service, so they have no usage rule.
+- `AGENTHUB_VERSION_USED` set to 4.0.74.
+- Verified on a copy with a fake `.env` against the mock (Tavily URL pointed at the mock): `slides` 52 passed, 1 skipped
+  (test_00, 01, 11, 42); `slides-noplaceholder` fails only the agent-tools check. Not verified: a real run; whether QAS already
+  carries the four new tools (until it does, the agent check will report them as not assigned).

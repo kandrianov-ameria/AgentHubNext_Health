@@ -21,7 +21,8 @@ Services and the rule for each, from agent-hub-backend:
                    of those two agents.
   mavslides-llm    MAV Slides engine (src/Windows/MavSlides/Engine/SlidesEngine.cs): the main and
                    coder LLM are called by generate_presentation (structure, slide HTML) and
-                   edit_slide (_coder.CompleteAsync), agent "MavSlidesAgent" (SlidesService.IsAgent).
+                   edit_slide (_coder.CompleteAsync) and, since 4.0.74, insert_slide (_llm plans the
+                   slide, _coder writes its HTML), agent "MavSlidesAgent" (SlidesService.IsAgent).
   mavslides-openrouter
                    OpenRouterImageClient: edit_slide_image (SlidesEngine.EditImageAsync) and, as the
                    fallback for pictures, generate_presentation (SlideImageService.ProduceAsync).
@@ -148,7 +149,8 @@ def all_services() -> dict[str, Usage]:
             IMAGE_TO_3D: ({"send_file_to_srd"}, {"%online_srd_devices%"}),
             IMAGE_TO_VIDEO: ({"send_file_to_srd"}, {"%online_srd_devices%"})})
         out["mavslides-llm"] = _from_agents("mavslides-llm", facts,
-                                            {MAV_SLIDES: ({"generate_presentation", "edit_slide"}, set())})
+                                            {MAV_SLIDES: ({"generate_presentation", "edit_slide", "insert_slide"},
+                                                          set())})
         out["mavslides-openrouter"] = _from_agents("mavslides-openrouter", facts, {
             MAV_SLIDES: ({"edit_slide_image", "generate_presentation"}, set())})
         out["mavslides-websearch"] = _from_agents("mavslides-websearch", facts,
