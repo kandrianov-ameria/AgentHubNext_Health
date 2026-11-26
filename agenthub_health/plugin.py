@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from . import __version__, bootstrap, causes, redact, repo_version, runlog, settings, services, usage
+from . import __version__, bootstrap, causes, golden, redact, repo_version, runlog, settings, services, usage
 from . import report as html_report
 from .probe import PROBES, ConfigDefect, ServiceFailure, SuiteIssue, set_current_test
 from .runlog import log
@@ -250,7 +250,7 @@ def pytest_runtest_protocol(item, nextitem):
         nodeid=item.nodeid, module=item.module.__name__.split(".")[-1] if item.module else "",
         name=item.name, objective=_objective(item),
         markers=sorted({m.name for m in item.iter_markers()
-                        if m.name in ("config", "smoke", "live")}))
+                        if m.name in ("config", "smoke", "live", "golden")}))
     yield
     set_current_test(None)
     rec = _records[item.nodeid]
@@ -307,12 +307,34 @@ def _log_slowest(n: int = 5) -> None:
                         m, u, ms, settings.TIMEOUT_DEFAULT, nodeid)
 
 
+def _golden_readiness(health, golden_recs) -> list:
+    """Readiness of the golden scenarios from this run's health checks (golden.py). Logged, and kept out of
+    everything else; never raises."""
+    try:
+        rows = golden.evaluate(health)
+    except Exception:  # noqa: BLE001 - the section is an extra; it must not break the report
+        log.exception("Could not work out the golden scenario readiness")
+        return []
+    n = golden.summarise(rows)
+    log.info("Golden scenarios: %s", ", ".join(f"{k} {v}" for k, v in n.items()))
+    for r in rows:
+        log.info("Golden %s %s: %s", r.scenario["id"], r.state,
+                 "; ".join(f"{x.label}: {x.detail}" for x in r.needs if x.state in ("bad", "warn")) or "-")
+    for rec in golden_recs:
+        log.info("Golden replay %s: %s%s", rec.nodeid.rsplit("[", 1)[-1].rstrip("]"), _LABELS.get(rec.category, rec.category),
+                 f" - {rec.failure.get('message')}" if rec.failure else "")
+    return rows
+
+
 def pytest_sessionfinish(session, exitstatus):
     counts: dict[str, int] = {}
-    for r in _records.values():
+    health = [r for r in _records.values() if "golden" not in r.markers]
+    golden_recs = [r for r in _records.values() if "golden" in r.markers]
+    for r in health:
         counts[r.category] = counts.get(r.category, 0) + 1
-    log.info("Ran %d checks in %.1f s: %s", len(_records), time.time() - _phase_t0,
+    log.info("Ran %d checks in %.1f s: %s", len(health), time.time() - _phase_t0,
              ", ".join(f"{_LABELS.get(k, k).lower()} {v}" for k, v in sorted(counts.items())) or "none")
+    _golden_rows = _golden_readiness(health, golden_recs)
     for issue in _collection_issues:
         log.error("Suite issue at %s: %s", issue.get("location"), issue.get("message"))
     _log_slowest()
@@ -334,7 +356,12 @@ def pytest_sessionfinish(session, exitstatus):
         "remote_config_dir": str(bootstrap.env_dir()),
         "log_dir": str(runlog.RUN_DIR or ""),
         "app_version": vars(repo_version.check()),
+        "golden": _golden_rows,
     }
+    if int(exitstatus) == 1 and golden_recs and not any(r.category in ("failed", "unused", "suite") for r in health)             and not _collection_issues:
+        # The only failures are golden replays: they have their own section and do not fail the run.
+        session.exitstatus = 0
+        log.info("Only golden replays failed; the exit status stays 0 (they are not health checks).")
     path = html_report.render(list(_records.values()), _collection_issues, meta)
     log.info("Report written to %s in %.1f s", path, time.time() - t_report)
     session.config._agenthub_report = path  # read by __main__

@@ -325,7 +325,7 @@ pytest.ini               pythonpath=., --strict-markers, --continue-on-collectio
                          markers: config, smoke, live
 .gitattributes           tests/assets/* binary; *.bat eol=crlf
 agenthub_health/
-  __init__.py            __version__ (bump on every change; currently 1.12.1)
+  __init__.py            __version__ (bump on every change; currently 1.13.0)
   __main__.py            opens the run logs, copies the console to console.log, runs pytest with the
                          plugin; -m "not live" unless --live; opens the report
   settings.py            paths, .env + suite.env loading, URL/secret var lists, fix_for() hints,
@@ -358,6 +358,9 @@ agenthub_health/
   plugin.py              classifies outcomes, records evidence, renders the report at sessionfinish
   report.py              bento dashboard HTML (see section 7); also writes results/history.json
   report_theme.py        visual layer applied to the rendered report (report_assets/proto.css, proto.js; Motion)
+  golden.py              (1.13.0) the 13 golden scenarios: readiness from this run's checks, replay helpers
+                         (system prompt as AgentLight.BuildSystemMessage, criteria checks); data in golden_scenarios.json
+  report_golden.py       the separate "Golden scenarios" report section
 remote_config/<ENV>/     created at run time: agents.json, tools.json, mcps.json, llm-providers.json,
                          pat-config.json (bodies exactly as downloaded) and snapshot.json
 logs/                    created at run time: one folder per run, plus setup.log from run_tests.bat
@@ -399,6 +402,7 @@ is per subject, so one bad token is one root cause, not one per endpoint.
 | `test_41_tavily_image_mcp` | stdio record passes `--api-key` and `--folder`; Tavily `/search` returns images. **One real, quota-using search per run.** |
 | `test_42_mavslides` | MAV Slides (1.8.0; settings from `AgentHub.MavSlides` of pat-config since 1.9.0): the main, coder and vision LLM each answer `chat/completions` (vision with an image); OpenRouter `/images` refuses no key, and accepts the key (a request without a prompt must be rejected as invalid, not unauthorized; 402 = no credit); web-search MCP `initialize`; the MAV Slides Tavily key returns images (**one more quota-using search per run**); `MavSlidesAgent` has its 11 tools (7 until 1.12.1) and `%existing_presentations%`. Marker `live`: one real OpenRouter image (billable). An empty value skips the check when the service is unused, and is a `ConfigDefect` (named `AgentHub.MavSlides.<Field>`) when it is used. |
 | `test_50_logs_mapping_seq` | Device mapping (service `device-mapping`); log-upload token for `/api/logs-session` and `/api/logs/session-image` (refused without a token; token accepted; service `log-upload`, always used); Seq ingestion |
+| `test_60_golden_replay` | Marker `golden` (1.13.0). Replays GS-03.1, GS-10.1, GS-11.1: screenshot + spoken request to the LLM of PointAndTalkAgent, answer text checked against the workbook's text criteria. Kept out of the verdict, counts, history and exit status; shown in the "Golden scenarios" section. `GOLDEN_REPLAY=0` switches it off. |
 | `test_90_live_generation` | Marker `live`: real 3D and stereo video generation. Slow and billable; only with `--live`. |
 
 ### Known defects
@@ -996,3 +1000,47 @@ Report motion, designed in the prototype first (`results/prototype/`, gitignored
 - Verified on a copy with a fake `.env` against the mock (Tavily URL pointed at the mock): `slides` 52 passed, 1 skipped
   (test_00, 01, 11, 42); `slides-noplaceholder` fails only the agent-tools check. Not verified: a real run; whether QAS already
   carries the four new tools (until it does, the agent check will report them as not assigned).
+
+### Version 1.13.0 (2026-11-26, no real run yet)
+
+- Golden scenarios (`checklist/Goldenscenarios/AgentHubNext_GoldenScenarios_v1.1.xlsx`, sheet Scenarios, Set = Golden, 13
+  rows) get **their own report section**, after Skipped and before Run details, sidebar entry "Golden scenarios". It does
+  not change the verdict, the counts, the donut, the filters, the history or the exit status (`plugin` and
+  `report.render` take records with the `golden` marker out of everything else; if only golden replays fail the exit
+  status stays 0). The cards carry no `data-status`, so the status filter and search ignore them.
+- The suite cannot run a golden scenario (voice, pointing, screenshot, Chrome extension, SRD are on the device), so it shows:
+  1. **Readiness**, worked out in `golden.evaluate()` at the end of the run with no request of its own. Per scenario: agents
+     reachable from PointAndTalkAgent, tools assigned to the agent that calls them (`[mcp]name` in AssignedMCPs), prompt
+     placeholders (`%existing_3d_objects%`, `%existing_videos%`), MCP records, the services behind them, the LLM provider
+     of PointAndTalkAgent (primary failed and secondary fine = degraded), and speech to text. The service and MCP states are
+     read from the health checks of this run (`failed` = blocked, `unused` = degraded, none ran = "Not verified"). Which of
+     Deepgram and Whisper the app uses is not known to the suite, so one failing is "degraded", both is "blocked".
+  2. **Replays** (`tests/test_60_golden_replay.py`) for GS-03.1, GS-10.1, GS-11.1: system prompt = InnerInstructions with
+     `%sub-agents%`, date, time and path replaced (`AgentLight.BuildSystemMessage`); user message = text + screenshot
+     (`AiMessage.CreateUser`). Differences from the app, stated in the report: no tools offered, a PNG of the whole page
+     (`tests/assets/golden/`, the workbook pages rendered at 1920x1080 with headless Chrome) instead of a JPEG plus zone
+     crops, the spoken text only, no user facts. Criteria are the text-readable ones of the workbook (named terms, 25 words,
+     no wrong chart value, no German left over). The model is not deterministic; a failure is a signal, not proof.
+     GS-02.2 has no replay (its Brandenburg Gate photo is a download from Wikimedia, not in the assets).
+- Catalogue: `agenthub_health/golden_scenarios.json` (descriptive columns copied from the workbook; `needs`, `manual`, `replay`
+  are the suite's own). Rebuild it from the workbook by hand if the golden set changes.
+- Found while mapping: on QAS PointAndTalkAgent has `[tavily-search-image-node]tavily_search_image` (the local stdio server
+  that `test_41` checks), **not** the HTTP MCP `tavily-search-image` that answers 503. The workbook marks GS-02.2 and GS-03.1
+  "AT RISK - dependency failing today" because of that 503; by the configuration the 503 server is not the one these
+  scenarios use. The stdio server's Tavily API is checked by `test_41`.
+- Mock: `scripts/mock_aihub.py` modes `golden`, `golden-bad`, `golden-blocked`. Verified on a copy with a fake `.env`
+  (test_01, 02, 20, 40, 60): `golden` replays pass, `golden-bad` replays fail with the verdict and counts unchanged and exit
+  status 0, `golden-blocked` blocks GS-02.2/03.1 (tool missing), GS-07.x (`send_file_to_srd`), GS-08.6 (placeholder); readiness
+  evaluated with synthetic records gives 13 ready, and all blocked when the LLM or Tavily record fails.
+  Not verified: a real run (real QAS, the real Anthropic answers, the Anthropic request format), the report page by eye
+  (the browser pane could not open the file), Edge, Safari.
+- First real run (QAS, 2026-11-26, 333 s): readiness 13 of 13 ready. Replays: GS-10.1 passed; GS-11.1 failed only because
+  the "no wrong value" check counted derived percentages (+117 %, +25 %); the check now counts decimals only (re-run: passed).
+  GS-03.1 fails on length (26 and 30 words against the 25 limit, and on the first run only one correct number compared): the
+  model's behaviour, not a suite fault; answers vary run to run. Unrelated to the golden work, the same run had the
+  proxy-ai LLM servers (ICARUS 8001, PHAETON 7001 chat, 7013 embeddings, vision 7001) hang until the 60 s read timeout
+  (connection accepted, no answer); Whisper, SAM3 text and the Anthropic provider answered. Cause unknown, server side.
+- Later the same day, five replay runs: GS-03.1 length limit raised to 30 words (the model writes 26 to 31); chart check
+  also accepts differences of two chart values (2.6 - 1.9 = 0.7). Results still vary between runs (GS-03.1 sometimes names
+  no numbers, GS-11.1 sometimes writes 27 words, GS-10.1 once used wording the term list missed). That is the model's
+  variance; read the replays as a trend over several runs, and do not keep loosening criteria until they pass.

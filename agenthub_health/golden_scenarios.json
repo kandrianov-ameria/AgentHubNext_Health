@@ -1,0 +1,597 @@
+{
+ "source": "AgentHubNext_GoldenScenarios_v1.1.xlsx, sheet Scenarios, Set = Golden",
+ "scenarios": [
+  {
+   "id": "GS-01.1",
+   "category": "01 Simple questions",
+   "route": "web search",
+   "request": "What is the weather like in London today?",
+   "pointing": "No pointing",
+   "language": "EN",
+   "pass_criteria": "Temperature within 2 deg C of the Open-Meteo reference taken within 10 min; London named or clearly implied; 25 words or fewer; no markdown; no image.",
+   "expected_tools": "open-meteo-weather weather_forecast_current",
+   "needs": [
+    {
+     "kind": "speech"
+    },
+    {
+     "kind": "llm",
+     "agent": "PointAndTalkAgent"
+    },
+    {
+     "kind": "tool",
+     "agent": "PointAndTalkAgent",
+     "tool": "[open-meteo-weather]weather_forecast_current"
+    },
+    {
+     "kind": "mcp",
+     "name": "open-meteo-weather"
+    }
+   ],
+   "manual": "Whether the answer matches the Open-Meteo reference, and its format."
+  },
+  {
+   "id": "GS-01.2",
+   "category": "01 Simple questions",
+   "route": "web search",
+   "request": "What's the Bitcoin price in euros right now?",
+   "pointing": "No pointing",
+   "language": "EN",
+   "pass_criteria": "Price within 2 % of the reference taken within 5 min; currency is EUR; states it is a live value; 25 words or fewer.",
+   "expected_tools": "tavily_search (tavily.com MCP)",
+   "needs": [
+    {
+     "kind": "speech"
+    },
+    {
+     "kind": "llm",
+     "agent": "PointAndTalkAgent"
+    },
+    {
+     "kind": "tool",
+     "agent": "PointAndTalkAgent",
+     "tool": "[tavily.com]tavily_search"
+    },
+    {
+     "kind": "mcp",
+     "name": "tavily.com"
+    }
+   ],
+   "manual": "Whether the price is within 2 % of the reference (Coinbase), and its format."
+  },
+  {
+   "id": "GS-02.2",
+   "category": "02 Object identification",
+   "route": "simple answer",
+   "request": "What building is this?",
+   "pointing": "1 zone: the building in the photo",
+   "language": "EN",
+   "pass_criteria": "Brandenburg Gate / Brandenburger Tor named; city Berlin; max 25 words; exactly one image at the top of the answer and it loads.",
+   "expected_tools": "vision; tavily_search_image (answer picture)",
+   "needs": [
+    {
+     "kind": "speech"
+    },
+    {
+     "kind": "llm",
+     "agent": "PointAndTalkAgent"
+    },
+    {
+     "kind": "tool",
+     "agent": "PointAndTalkAgent",
+     "tool": "[tavily-search-image-node]tavily_search_image"
+    },
+    {
+     "kind": "mcp",
+     "name": "tavily-search-image-node"
+    },
+    {
+     "kind": "service",
+     "service": "tavily",
+     "why": "the Tavily Search API behind the image MCP"
+    }
+   ],
+   "manual": "That the model names the Brandenburg Gate, and the one picture at the top of the answer."
+  },
+  {
+   "id": "GS-03.1",
+   "category": "03 Product comparison",
+   "route": "simple answer",
+   "request": "Which of these three is best for a five kilometre road run? Compare them and recommend one.",
+   "pointing": "3 zones: the three shoe cards, left to right",
+   "language": "EN",
+   "pass_criteria": "Recommends Aero Racer 2; at least two of weight / price / type compared with correct numbers from the page; Trail Grip X not recommended for road; exactly one image; 25 words or fewer (comparison may use up to 250 only if asked).",
+   "expected_tools": "vision; tavily_search_image (product picture rule)",
+   "needs": [
+    {
+     "kind": "speech"
+    },
+    {
+     "kind": "llm",
+     "agent": "PointAndTalkAgent"
+    },
+    {
+     "kind": "tool",
+     "agent": "PointAndTalkAgent",
+     "tool": "[tavily-search-image-node]tavily_search_image"
+    },
+    {
+     "kind": "mcp",
+     "name": "tavily-search-image-node"
+    },
+    {
+     "kind": "service",
+     "service": "tavily",
+     "why": "the Tavily Search API behind the image MCP"
+    }
+   ],
+   "manual": "The recommendation, and the one product picture.",
+   "replay": {
+    "asset": "golden/products.png",
+    "checks": [
+     {
+      "type": "all",
+      "label": "recommends Aero Racer 2",
+      "terms": [
+       "Aero Racer 2"
+      ]
+     },
+     {
+      "type": "min_terms",
+      "label": "compares at least two correct numbers from the page",
+      "n": 2,
+      "terms": [
+       "198",
+       "159",
+       "310",
+       "129",
+       "295",
+       "139",
+       "4.6",
+       "4.4",
+       "4.5"
+      ]
+     },
+     {
+      "type": "max_words",
+      "label": "30 words or fewer (workbook says 25; allowed 30 because the replay has no tools and no zone crop)",
+      "n": 30
+     }
+    ],
+    "not_replayed": "The tool call for the product picture and the 'exactly one image' rule (no tools are offered to the model in a replay)."
+   }
+  },
+  {
+   "id": "GS-04.1",
+   "category": "04 Web form filling",
+   "route": "browser automation / subagents",
+   "request": "Fill this form with the name Max Mustermann, email max.mustermann@example.com, phone plus 49 30 1234567, company Muster GmbH and country Germany.",
+   "pointing": "1 zone: the form",
+   "language": "EN",
+   "pass_criteria": "All five fields hold exactly the spoken values (email and phone character-exact, select shows Germany); no submit ('Thank you' text absent); finished within the run.",
+   "expected_tools": "ChromeBrowserControllerAgent: chrome_fill_form / chrome_fill",
+   "needs": [
+    {
+     "kind": "speech"
+    },
+    {
+     "kind": "llm",
+     "agent": "PointAndTalkAgent"
+    },
+    {
+     "kind": "agent",
+     "agent": "ChromeBrowserControllerAgent"
+    },
+    {
+     "kind": "tool",
+     "agent": "ChromeBrowserControllerAgent",
+     "tool": "[BrowserController]chrome_fill_form"
+    },
+    {
+     "kind": "tool",
+     "agent": "ChromeBrowserControllerAgent",
+     "tool": "[BrowserController]chrome_fill"
+    }
+   ],
+   "manual": "That the Maverick Chrome extension is running on the device and fills the five fields exactly."
+  },
+  {
+   "id": "GS-05.1",
+   "category": "05 Browser automation",
+   "route": "browser automation / subagents",
+   "request": "Open the web browser and go to amazon.com.",
+   "pointing": "No pointing",
+   "language": "EN",
+   "pass_criteria": "Chrome shows amazon.com (or the .com landing page) within 15 s of the send; the assistant confirms; no extra tab left blank.",
+   "expected_tools": "ChromeBrowserControllerAgent: chrome_open_tab / chrome_navigate",
+   "needs": [
+    {
+     "kind": "speech"
+    },
+    {
+     "kind": "llm",
+     "agent": "PointAndTalkAgent"
+    },
+    {
+     "kind": "agent",
+     "agent": "ChromeBrowserControllerAgent"
+    },
+    {
+     "kind": "tool",
+     "agent": "ChromeBrowserControllerAgent",
+     "tool": "[BrowserController]chrome_open_tab"
+    },
+    {
+     "kind": "tool",
+     "agent": "ChromeBrowserControllerAgent",
+     "tool": "[BrowserController]chrome_navigate"
+    }
+   ],
+   "manual": "That the extension opens amazon.com within 15 s."
+  },
+  {
+   "id": "GS-06.1",
+   "category": "06 Image creation",
+   "route": "generation (image / 3D / video)",
+   "request": "Generate an image of a cat in an astronaut costume in open space.",
+   "pointing": "No pointing",
+   "language": "EN",
+   "pass_criteria": "Image file exists; clearly a cat, a space suit and a space background; no text artefacts; the modality is not asked because 'image' is named.",
+   "expected_tools": "nano-banana-node: nano_banana_generate_image; open_in_default_app",
+   "needs": [
+    {
+     "kind": "speech"
+    },
+    {
+     "kind": "llm",
+     "agent": "PointAndTalkAgent"
+    },
+    {
+     "kind": "tool",
+     "agent": "PointAndTalkAgent",
+     "tool": "[nano-banana-node]nano_banana_generate_image"
+    },
+    {
+     "kind": "tool",
+     "agent": "PointAndTalkAgent",
+     "tool": "open_in_default_app"
+    }
+   ],
+   "manual": "The generated picture and that it opens."
+  },
+  {
+   "id": "GS-07.1",
+   "category": "07 3D object creation",
+   "route": "generation (image / 3D / video)",
+   "request": "Show this sneaker in 3D.",
+   "pointing": "1 zone: the sneaker",
+   "language": "EN",
+   "pass_criteria": "Status line shows a rising percentage; a new .glb appears in the file list (GET /files); answer says it was sent to the SRD (sent_count >= 1) or states why not; no clarification asked.",
+   "expected_tools": "ImageTo3DAgent: generate_3d_object, send_file_to_srd",
+   "needs": [
+    {
+     "kind": "speech"
+    },
+    {
+     "kind": "llm",
+     "agent": "PointAndTalkAgent"
+    },
+    {
+     "kind": "agent",
+     "agent": "ImageTo3DAgent"
+    },
+    {
+     "kind": "tool",
+     "agent": "ImageTo3DAgent",
+     "tool": "generate_3d_object"
+    },
+    {
+     "kind": "tool",
+     "agent": "ImageTo3DAgent",
+     "tool": "send_file_to_srd"
+    },
+    {
+     "kind": "service",
+     "service": "2d-to-3d",
+     "why": ""
+    },
+    {
+     "kind": "service",
+     "service": "mav-starkit-api",
+     "why": ""
+    },
+    {
+     "kind": "service",
+     "service": "device-mapping",
+     "why": ""
+    }
+   ],
+   "manual": "Generation progress, the .glb in storage and that the SRD shows it (The SRD (3D display) itself and its controller registration; the suite only sees mav-starkit-api and device mapping.)"
+  },
+  {
+   "id": "GS-07.3",
+   "category": "07 3D object creation",
+   "route": "generation (image / 3D / video)",
+   "request": "Show me this sneaker. On three d monitor.",
+   "pointing": "1 zone: the Trail shoe (right tile)",
+   "language": "EN",
+   "pass_criteria": "No progress percentage and no new file in storage; SRD shows the trail shoe; answer says it was loaded from storage. Real baseline ~19 s - flag anything over 30 s.",
+   "expected_tools": "ImageTo3DAgent with %existing_3d_objects%; send_file_to_srd",
+   "needs": [
+    {
+     "kind": "speech"
+    },
+    {
+     "kind": "llm",
+     "agent": "PointAndTalkAgent"
+    },
+    {
+     "kind": "agent",
+     "agent": "ImageTo3DAgent"
+    },
+    {
+     "kind": "placeholder",
+     "agent": "ImageTo3DAgent",
+     "text": "%existing_3d_objects%"
+    },
+    {
+     "kind": "tool",
+     "agent": "ImageTo3DAgent",
+     "tool": "send_file_to_srd"
+    },
+    {
+     "kind": "service",
+     "service": "mav-starkit-api",
+     "why": ""
+    },
+    {
+     "kind": "service",
+     "service": "device-mapping",
+     "why": ""
+    }
+   ],
+   "manual": "Loading from storage and that the SRD shows it (The SRD (3D display) itself and its controller registration; the suite only sees mav-starkit-api and device mapping.)"
+  },
+  {
+   "id": "GS-08.2",
+   "category": "08 3D video creation",
+   "route": "generation (image / 3D / video)",
+   "request": "Make a video of this sneaker rotating slowly on a white background.",
+   "pointing": "1 zone: the sneaker",
+   "language": "EN",
+   "pass_criteria": "Progress percentage shown; MP4 stored with the 'stereo-video' marker; if no stereo video is produced the tool fails with a clear message (3D-010); normal status text returns afterwards (3D-008).",
+   "expected_tools": "ImageToVideoAgent: generate_video, send_file_to_srd",
+   "needs": [
+    {
+     "kind": "speech"
+    },
+    {
+     "kind": "llm",
+     "agent": "PointAndTalkAgent"
+    },
+    {
+     "kind": "agent",
+     "agent": "ImageToVideoAgent"
+    },
+    {
+     "kind": "tool",
+     "agent": "ImageToVideoAgent",
+     "tool": "generate_video"
+    },
+    {
+     "kind": "tool",
+     "agent": "ImageToVideoAgent",
+     "tool": "send_file_to_srd"
+    },
+    {
+     "kind": "service",
+     "service": "2d-to-video",
+     "why": ""
+    },
+    {
+     "kind": "service",
+     "service": "mav-starkit-api",
+     "why": ""
+    },
+    {
+     "kind": "service",
+     "service": "device-mapping",
+     "why": ""
+    }
+   ],
+   "manual": "Progress, the stereo-video marker and the SRD (The SRD (3D display) itself and its controller registration; the suite only sees mav-starkit-api and device mapping.)"
+  },
+  {
+   "id": "GS-08.6",
+   "category": "08 3D video creation",
+   "route": "generation (image / 3D / video)",
+   "request": "Show me the three d video of dancing cats.",
+   "pointing": "No pointing",
+   "language": "EN",
+   "pass_criteria": "No progress percentage and no new file in storage; video reaches the SRD (sent_count >= 1); it is the existing file with the 'stereo-video' marker; answer says it was loaded from storage; never starts a new generation. If the library has no cats video the run is invalid - run GS-08.1 first.",
+   "expected_tools": "ImageToVideoAgent: existing-video lookup, send_file_to_srd (tool names as in GS-08.1; lookup step not verified)",
+   "needs": [
+    {
+     "kind": "speech"
+    },
+    {
+     "kind": "llm",
+     "agent": "PointAndTalkAgent"
+    },
+    {
+     "kind": "agent",
+     "agent": "ImageToVideoAgent"
+    },
+    {
+     "kind": "placeholder",
+     "agent": "ImageToVideoAgent",
+     "text": "%existing_videos%"
+    },
+    {
+     "kind": "tool",
+     "agent": "ImageToVideoAgent",
+     "tool": "send_file_to_srd"
+    },
+    {
+     "kind": "service",
+     "service": "mav-starkit-api",
+     "why": ""
+    },
+    {
+     "kind": "service",
+     "service": "device-mapping",
+     "why": ""
+    }
+   ],
+   "manual": "Loading from storage and the SRD (The SRD (3D display) itself and its controller registration; the suite only sees mav-starkit-api and device mapping.)"
+  },
+  {
+   "id": "GS-10.1",
+   "category": "10 Translation of pointed text",
+   "route": "simple answer",
+   "request": "Translate this to English.",
+   "pointing": "1 zone: the German paragraph (left block)",
+   "language": "EN",
+   "pass_criteria": "Meaning complete: two working days, part of the order missing, will notify when shipped; fluent English; no German left over; may exceed 25 words because a translation is the content.",
+   "expected_tools": "vision/OCR",
+   "needs": [
+    {
+     "kind": "speech"
+    },
+    {
+     "kind": "llm",
+     "agent": "PointAndTalkAgent"
+    }
+   ],
+   "manual": "Pointing at the German block.",
+   "replay": {
+    "asset": "golden/translate.png",
+    "checks": [
+     {
+      "type": "any",
+      "label": "says the delivery is delayed by two working days",
+      "terms": [
+       "two working days",
+       "2 working days",
+       "two business days",
+       "2 business days",
+       "two days", "two workdays", "two weekdays", "2 workdays", "2 weekdays",
+       "2 days"
+      ]
+     },
+     {
+      "type": "any",
+      "label": "says part of the order is missing or not yet in stock",
+      "terms": [
+       "part of the order",
+       "not yet",
+       "has not arrived",
+       "hasn't arrived",
+       "not arrived",
+       "part of your order",
+       "one part",
+       "a part",
+       "missing"
+      ]
+     },
+     {
+      "type": "any",
+      "label": "says they will notify when it ships",
+      "terms": [
+       "notify",
+       "let you know",
+       "inform",
+       "get in touch",
+       "contact you",
+       "will reach out",
+       "be in touch",
+       "update you"
+      ]
+     },
+     {
+      "type": "none_of",
+      "label": "no German left over",
+      "terms": [
+       "Lieferung",
+       "Werktage",
+       "Bestellung",
+       "Lager",
+       "Sendung",
+       "unterwegs",
+       "leider"
+      ]
+     }
+    ],
+    "not_replayed": "That the model translated the pointed block (the left one) and not the other two."
+   }
+  },
+  {
+   "id": "GS-11.1",
+   "category": "11 Read data (chart / table)",
+   "route": "simple answer",
+   "request": "What is the trend here?",
+   "pointing": "1 zone: the bar chart",
+   "language": "EN",
+   "pass_criteria": "Direction (up) correct; Q1 1.2 and Q4 2.6 correct; no wrong value; 25 words or fewer.",
+   "expected_tools": "vision/OCR",
+   "needs": [
+    {
+     "kind": "speech"
+    },
+    {
+     "kind": "llm",
+     "agent": "PointAndTalkAgent"
+    }
+   ],
+   "manual": "Pointing at the bar chart.",
+   "replay": {
+    "asset": "golden/chart.png",
+    "checks": [
+     {
+      "type": "any",
+      "label": "direction is up",
+      "terms": [
+       "up",
+       "increas",
+       "grow",
+       "rising",
+       "rise",
+       "upward",
+       "climb"
+      ]
+     },
+     {
+      "type": "all",
+      "label": "names Q1 1.2 and Q4 2.6",
+      "terms": [
+       "1.2",
+       "2.6"
+      ]
+     },
+     {
+      "type": "no_other_numbers",
+      "label": "no wrong chart value (a decimal that is not 1.2, 1.5, 1.9, 2.6 or a difference of two of them; percentages and integers are ignored)",
+      "allowed": [
+       "1.2",
+       "1.5",
+       "1.9",
+       "2.6",
+       "41",
+       "18",
+       "14",
+       "11",
+       "16",
+       "2025"
+      ]
+     },
+     {
+      "type": "max_words",
+      "label": "25 words or fewer",
+      "n": 25
+     }
+    ],
+    "not_replayed": "That the model looked at the bar chart and not at the region table (pointing)."
+   }
+  }
+ ]
+}

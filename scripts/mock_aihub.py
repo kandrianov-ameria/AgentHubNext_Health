@@ -39,6 +39,12 @@ The scenario is read from mode.txt next to this script on every request:
     slides-missing  as slides, but MavSlides.LlmUrl / LlmModel / OpenRouterApiKey are empty
     slides-nosection  as slides, but the AgentHub section has no MavSlides object at all (an older server)
     slides-badtype  as slides, but MavSlides is a string and MavSlides.LlmUrl would be a number (System.Text.Json throws)
+  Golden scenarios (1.13.0): PointAndTalkAgent has what the 13 golden scenarios need (agents, tools, MCP records), and the
+  mock LLM answers the three replay requests from the user text:
+    golden          every need in place, the three answers meet the criteria
+    golden-bad      as golden, but the answers are wrong (replays fail, readiness stays ready)
+    golden-blocked  as golden, but ImageTo3DAgent lacks send_file_to_srd, no agent has the tavily image tool, and the
+                    ImageToVideoAgent prompt lacks %existing_videos%
 Services other than these are not mocked; their checks fail with connection errors.
 """
 import json
@@ -74,6 +80,26 @@ def agents(mode):
             prompt = "Presentations: none"
         base.append({"category": "QAS", "keyword": "MavSlidesAgent", "version": 1, "llm_provider_id": 1,
                      "json_schema": {"Name": "MavSlidesAgent", "AssignedTools": tools_, "InnerInstructions": prompt}})
+    if mode.startswith("golden"):
+        root = base[0]["json_schema"]
+        root["AssignedTools"] = ["memory_search", "open_in_default_app"]
+        root["AssignedMCPs"] = ["[srv]lookup", "[open-meteo-weather]weather_forecast_current",
+                                "[tavily.com]tavily_search", "[nano-banana-node]nano_banana_generate_image"]
+        if mode != "golden-blocked":
+            root["AssignedMCPs"].append("[tavily-search-image-node]tavily_search_image")
+        root["AssignedAgents"] = ["HelperAgent", "ChromeBrowserControllerAgent", "ImageTo3DAgent", "ImageToVideoAgent"]
+        root["InnerInstructions"] = "You are the assistant. Answer in 25 words or fewer. %sub-agents% Today is %current_date%."
+        def ag(name, tools_, mcps_=(), prompt=""):
+            return {"category": "QAS", "keyword": name, "version": 1, "llm_provider_id": 1,
+                    "json_schema": {"Name": name, "AssignedTools": list(tools_), "AssignedMCPs": list(mcps_),
+                                    "AssignedAgents": [], "InnerInstructions": prompt,
+                                    "AgentDescription": name + " (mock)"}}
+        base.append(ag("ChromeBrowserControllerAgent", [], ["[BrowserController]" + x for x in
+                       ("chrome_fill_form", "chrome_fill", "chrome_open_tab", "chrome_navigate")]))
+        base.append(ag("ImageTo3DAgent", ["generate_3d_object"] + ([] if mode == "golden-blocked" else ["send_file_to_srd"]),
+                       prompt="Known: %existing_3d_objects%"))
+        base.append(ag("ImageToVideoAgent", ["generate_video", "send_file_to_srd"],
+                       prompt="Known: nothing" if mode == "golden-blocked" else "Known: %existing_videos%"))
     if mode == "badtypes":
         base[1]["llm_provider_id"] = None           # fatal: null into int
         base[0]["json_schema"]["MaxTokenCount"] = "1000"   # note
@@ -97,10 +123,28 @@ def tools(mode):
         if mode == "imagegen" else []
     if mode.startswith("slides"):
         extra += [{"category": "QAS", "keyword": t, "json_schema": {"name": t}} for t in SLIDES_TOOLS]
+    if mode.startswith("golden"):
+        local = ["open_in_default_app", "generate_3d_object", "send_file_to_srd", "generate_video"]
+        extra += [{"category": "QAS", "keyword": n, "json_schema": {"name": n}} for n in local]
+        mcp_tools = [("open-meteo-weather", "weather_forecast_current"), ("tavily.com", "tavily_search"),
+                     ("nano-banana-node", "nano_banana_generate_image"),
+                     ("tavily-search-image-node", "tavily_search_image"),
+                     ("BrowserController", "chrome_fill_form"), ("BrowserController", "chrome_fill"),
+                     ("BrowserController", "chrome_open_tab"), ("BrowserController", "chrome_navigate")]
+        extra += [{"category": "QAS", "keyword": n, "json_schema": {"name": n, "mcp": m}} for m, n in mcp_tools]
     return extra + [{"category": "QAS", "keyword": "memory_search", "json_schema": {"name": "memory_search"}},
             {"category": "QAS", "keyword": "lookup", "json_schema": {"name": "lookup", "mcp": "srv"}}]
 
 def mcps(mode):
+    if mode.startswith("golden"):
+        http = lambda n: {"id": len(n), "name": n, "type": "streamable_http", "url": f"http://127.0.0.1:{PORT}/mcp",
+                          "headers": "Authorization: Bearer mcpsecretmcpsecret123"}
+        return [http("srv"), http("open-meteo-weather"), http("tavily.com"),
+                {"id": 50, "name": "tavily-search-image-node", "type": "stdio", "command": "node",
+                 "arguments": "C:/x/mcp-tavily-search-image/dist/index.js,--api-key,tvly-mocktavilymock1234,--folder,C:/t",
+                 "headers": ""},
+                {"id": 51, "name": "nano-banana-node", "type": "stdio", "command": "node", "arguments": "x.js", "headers": ""},
+                {"id": 52, "name": "BrowserController", "type": "stdio", "command": "npx", "arguments": "x", "headers": ""}]
     return [{"id": 1, "name": "srv", "type": "streamable_http", "url": f"http://127.0.0.1:{PORT}/mcp",
              "headers": "Authorization: Bearer mcpsecretmcpsecret123"}]
 
@@ -197,6 +241,23 @@ class H(BaseHTTPRequestHandler):
             if self.headers.get("Authorization") != "Bearer slidestavilyslidestavily1" or mode == "slides-rejected":
                 return self._send(401, {"detail": {"error": "Unauthorized: missing or invalid API key."}})
             return self._send(200, {"results": [], "images": [{"url": "http://x/y.jpg", "description": "chair"}]})
+        if path.endswith("/chat/completions") and mode.startswith("golden"):
+            try:
+                msgs = json.loads(raw).get("messages", [])
+                last = msgs[-1].get("content")
+                text = " ".join(p.get("text", "") for p in last if isinstance(p, dict)) if isinstance(last, list) else str(last)
+            except (ValueError, AttributeError, IndexError):
+                text = ""
+            bad = mode == "golden-bad"
+            if "trend" in text:
+                ans = "Revenue is flat at about 3.4 million." if bad else "The trend is up: revenue grows from 1.2 in Q1 to 2.6 in Q4."
+            elif "Translate" in text:
+                ans = "Die Lieferung verzoegert sich." if bad else "The delivery is delayed by two working days because part of the order has not arrived yet. We will notify you when it ships."
+            elif "kilometre" in text:
+                ans = "Cushion Max 5." if bad else "Aero Racer 2: 198 g and 159 euros, lighter and faster than the others for road racing."
+            else:
+                ans = "PONG"
+            return self._send(200, {"choices": [{"message": {"role": "assistant", "content": ans}}]})
         if path.endswith("/chat/completions"):
             if mode == "slides-rejected" and slides_ok:
                 return self._send(200, {"choices": [{"message": {"role": "assistant", "content": ""}}]})

@@ -28,7 +28,7 @@ import json
 from collections import OrderedDict, defaultdict
 from types import SimpleNamespace
 
-from . import redact, report_theme, services, settings
+from . import redact, report_golden, report_theme, services, settings
 
 AREAS = {
     "test_00_setup": "Suite setup",
@@ -937,6 +937,9 @@ _ICONS = """<svg width="0" height="0" style="position:absolute" aria-hidden="tru
 
 def render(records, collection_issues, meta) -> str:
     settings.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    # Golden scenario replays have a section of their own (report_golden); they are not health checks.
+    golden_records = [r for r in records if "golden" in r.markers]
+    records = [r for r in records if "golden" not in r.markers]
     cat = defaultdict(list)
     for r in records:
         cat[r.category].append(r)
@@ -1041,6 +1044,12 @@ def render(records, collection_issues, meta) -> str:
                 _check_list(skipped, "skipped", h), len(skipped)),
     ])
 
+    golden_rows = meta.get("golden") or []
+    golden_html = report_golden.section(golden_rows, golden_records) if golden_rows else ""
+    golden_nav = (f'<div class="sec">Golden set</div><a href="#golden" style="--c:var(--accent)"><span class="l">'
+                  f'{_ico("grid")}Golden scenarios</span><span class="pill">{len(golden_rows)}</span></a>'
+                  if golden_rows else "")
+
     all_requests = "".join(
         f'<div class="t-obj" style="margin-top:14px">{e(r.objective)}</div><div class="t-id mono">{e(r.nodeid)}</div>{_probe_rows(r.probes)}'
         for r in records if r.probes)
@@ -1052,7 +1061,7 @@ def render(records, collection_issues, meta) -> str:
 <title>AgentHubNext Health Report</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<style>{CSS}</style><script>{JS}</script></head>
+<style>{CSS}{report_golden.CSS}</style><script>{JS}</script></head>
 <body>
 {_ICONS}
 <span id="report-meta" hidden data-env="{e(meta['environment'])}" data-time="{e(_ts(meta['finished']))}" data-verdict="{e(verdict[3])}"></span>
@@ -1067,6 +1076,7 @@ def render(records, collection_issues, meta) -> str:
     {nav('known', 'Known issues')}
     {nav('passed', 'Passed checks')}
     {nav('skipped', 'Skipped')}
+    {golden_nav}
     <div class="sec">Run</div>
     <a href="#run" style="--c:var(--muted)"><span class="l">{_ico('run')}Run details</span></a>
   </nav>
@@ -1107,6 +1117,7 @@ def render(records, collection_issues, meta) -> str:
       </div>
     </section>
     {sections}
+    {golden_html}
     <section id="run">
       <h2><span class="h-ico" style="--c:var(--muted)">{_ico('run')}</span>Run details</h2>
       <p class="sub">How this run was made and what it used.</p>

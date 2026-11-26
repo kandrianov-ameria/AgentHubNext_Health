@@ -105,3 +105,8 @@ TIMEOUT_CONFIG = float(get("AGENTHUB_HEALTH_CONFIG_TIMEOUT", "20"))
 # How many runs are kept (run folders in logs/, runs per environment in results/history.json);
 # older ones are deleted at every run.
 LOG_RUNS_TO_KEEP = max(1, int(get("AGENTHUB_HEALTH_LOG_RUNS", "7")))
+
+# --- golden scenarios (1.13.0) -----------------------------------------------------------
+# One model call per golden replay (3 per run, see tests/test_60_golden_replay.py). 0 switches them off;
+# the readiness part of the "Golden scenarios" report section needs no request and always runs.
+GOLDEN_REPLAY = get("GOLDEN_REPLAY", "1").lower() not in ("0", "false", "no", "off")
