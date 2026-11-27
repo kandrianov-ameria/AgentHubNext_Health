@@ -129,6 +129,28 @@ def _from_pat(service: str, section: dict | None, fields: list[str]) -> Usage:
     return Usage(service, True, f"configured by {', '.join(fields)} in pat-config")
 
 
+_PLACEHOLDERS_3D = {"%existing_3d_objects%", "%online_srd_devices%"}
+_PLACEHOLDERS_VIDEO = {"%existing_videos%", "%online_srd_devices%"}
+
+# service key -> {agent: (local tools it must have assigned, prompt placeholders it must contain)}.
+# One table for two readers: all_services() below (is the service used?) and impact.py (which agents
+# and tools does a failure of it touch?). Rules and their source are described in the docstring above.
+NEEDS: dict[str, dict[str, tuple[set, set]]] = {
+    "2d-to-3d": {IMAGE_TO_3D: ({"generate_3d_object"}, set())},
+    "2d-to-video": {IMAGE_TO_VIDEO: ({"generate_video"}, set())},
+    "mav-starkit-api": {
+        IMAGE_TO_3D: ({"generate_3d_object", "send_file_to_srd"}, _PLACEHOLDERS_3D),
+        IMAGE_TO_VIDEO: ({"generate_video", "send_file_to_srd"}, _PLACEHOLDERS_VIDEO)},
+    "device-mapping": {
+        IMAGE_TO_3D: ({"send_file_to_srd"}, {"%online_srd_devices%"}),
+        IMAGE_TO_VIDEO: ({"send_file_to_srd"}, {"%online_srd_devices%"})},
+    "mavslides-llm": {MAV_SLIDES: ({"generate_presentation", "edit_slide", "insert_slide"}, set())},
+    "mavslides-openrouter": {MAV_SLIDES: ({"edit_slide_image", "generate_presentation"}, set())},
+    "mavslides-websearch": {MAV_SLIDES: ({"generate_presentation"}, set())},
+    "mavslides-tavily": {MAV_SLIDES: ({"generate_presentation"}, set())},
+}
+
+
 @functools.lru_cache(maxsize=None)
 def all_services() -> dict[str, Usage]:
     out: dict[str, Usage] = {}
@@ -138,25 +160,8 @@ def all_services() -> dict[str, Usage]:
         cfg = None
     if cfg is not None:
         facts = _agent_facts(cfg)
-        placeholders_3d = {"%existing_3d_objects%", "%online_srd_devices%"}
-        placeholders_video = {"%existing_videos%", "%online_srd_devices%"}
-        out["2d-to-3d"] = _from_agents("2d-to-3d", facts, {IMAGE_TO_3D: ({"generate_3d_object"}, set())})
-        out["2d-to-video"] = _from_agents("2d-to-video", facts, {IMAGE_TO_VIDEO: ({"generate_video"}, set())})
-        out["mav-starkit-api"] = _from_agents("mav-starkit-api", facts, {
-            IMAGE_TO_3D: ({"generate_3d_object", "send_file_to_srd"}, placeholders_3d),
-            IMAGE_TO_VIDEO: ({"generate_video", "send_file_to_srd"}, placeholders_video)})
-        out["device-mapping"] = _from_agents("device-mapping", facts, {
-            IMAGE_TO_3D: ({"send_file_to_srd"}, {"%online_srd_devices%"}),
-            IMAGE_TO_VIDEO: ({"send_file_to_srd"}, {"%online_srd_devices%"})})
-        out["mavslides-llm"] = _from_agents("mavslides-llm", facts,
-                                            {MAV_SLIDES: ({"generate_presentation", "edit_slide", "insert_slide"},
-                                                          set())})
-        out["mavslides-openrouter"] = _from_agents("mavslides-openrouter", facts, {
-            MAV_SLIDES: ({"edit_slide_image", "generate_presentation"}, set())})
-        out["mavslides-websearch"] = _from_agents("mavslides-websearch", facts,
-                                                  {MAV_SLIDES: ({"generate_presentation"}, set())})
-        out["mavslides-tavily"] = _from_agents("mavslides-tavily", facts,
-                                               {MAV_SLIDES: ({"generate_presentation"}, set())})
+        for service, needs in NEEDS.items():
+            out[service] = _from_agents(service, facts, needs)
     out["mavslides-vision"] = Usage("mavslides-vision", False, VISION_OPTIONS_OFF)
     try:
         _f, section = remote.agenthub_section()

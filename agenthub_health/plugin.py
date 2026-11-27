@@ -120,7 +120,9 @@ def _failure(excinfo) -> tuple[str, dict]:
         _apply_usage(exc)
     if isinstance(exc, ServiceFailure):
         svc = services.get(exc.service)
+        keys = sorted({exc.service, exc.probe.service if exc.probe else exc.service})
         d = {"kind": "service", "cause_key": exc.cause_key, "message": exc.message, "hint": exc.hint,
+             "service_keys": keys,   # impact.py: which agents, tools, ... depend on it
              "service": svc.title, "owner": svc.owner, "credential": svc.credential,
              "impact": svc.impact, "rotation": causes.fix(exc.probe, svc.owner, svc.rotation), "location": loc,
              "no_effect_reason": exc.no_effect_reason}
@@ -137,6 +139,7 @@ def _failure(excinfo) -> tuple[str, dict]:
         svc = services.get(exc.service)
         return ("failed" if exc.affects_app else "unused"), {
             "kind": "config", "cause_key": exc.cause_key, "message": exc.message,
+            "service_keys": [exc.service],
             "title": "Remote configuration defect", "explanation": exc.rule,
             "impact": exc.impact, "rotation": exc.remediation, "service": svc.title,
             "owner": svc.owner, "credential": "", "hint": "", "location": loc,

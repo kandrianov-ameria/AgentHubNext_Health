@@ -325,7 +325,7 @@ pytest.ini               pythonpath=., --strict-markers, --continue-on-collectio
                          markers: config, smoke, live
 .gitattributes           tests/assets/* binary; *.bat eol=crlf
 agenthub_health/
-  __init__.py            __version__ (bump on every change; currently 1.13.0)
+  __init__.py            __version__ (bump on every change; currently 1.14.0)
   __main__.py            opens the run logs, copies the console to console.log, runs pytest with the
                          plugin; -m "not live" unless --live; opens the report
   settings.py            paths, .env + suite.env loading, URL/secret var lists, fix_for() hints,
@@ -361,6 +361,8 @@ agenthub_health/
   golden.py              (1.13.0) the 13 golden scenarios: readiness from this run's checks, replay helpers
                          (system prompt as AgentLight.BuildSystemMessage, criteria checks); data in golden_scenarios.json
   report_golden.py       the separate "Golden scenarios" report section
+  impact.py              (1.14.0) per root cause: which agents, tools, MCP servers, LLM providers and configuration
+                         entries a failure touches in this run's configuration, and how (see Version 1.14.0)
 remote_config/<ENV>/     created at run time: agents.json, tools.json, mcps.json, llm-providers.json,
                          pat-config.json (bodies exactly as downloaded) and snapshot.json
 logs/                    created at run time: one folder per run, plus setup.log from run_tests.bat
@@ -493,6 +495,8 @@ Orphan agents on QAS: `GoogleWorkspaceAgent`, `NanoBananaImageEditorAgent` and
 - the evidence (masked);
 - the location: the deepest frame under `tests/`;
 - the impact and the owner;
+- (1.14.0, failures that affect the app only) "Affected in this configuration": agents, tools, MCP servers, LLM
+  providers, configuration entries and app functions, each with how it is affected (`impact.py`);
 - "How to fix", which depends on the status:
   - 5xx or 503: report to the owner with the response;
   - timeout: rerun;
@@ -1044,3 +1048,27 @@ Report motion, designed in the prototype first (`results/prototype/`, gitignored
   also accepts differences of two chart values (2.6 - 1.9 = 0.7). Results still vary between runs (GS-03.1 sometimes names
   no numbers, GS-11.1 sometimes writes 27 words, GS-10.1 once used wording the term list missed). That is the model's
   variance; read the replays as a trend over several runs, and do not keep loosening criteria until they pass.
+
+### Version 1.14.0 (2026-11-27, no real run yet)
+
+- New `agenthub_health/impact.py`. Every card under "Failed checks" gets a block **Affected in this configuration**: agents,
+  tools, MCP servers, LLM providers, configuration entries (and app functions when no agent or tool depends on it), each with
+  a plain-language "how". Cards under "Failed, no effect on the app" get none (they already say why nothing is affected).
+  Worked out at report time from this run's downloaded configuration (`remote.config()`), no request of its own; it never
+  raises (no block on any problem).
+- Sources: `usage.NEEDS` (new single table, agent -> tools and prompt placeholders per service, now also used by
+  `usage.all_services`; only agents reachable from PointAndTalkAgent count); the probe subject `LLM provider '<name>'` /
+  `MCP server '<name>'` set by test_20 / test_40; the stdio record that starts mcp-tavily-search-image (test_41); wording
+  from `services.py`. A provider that is an agent's primary says whether its secondary also failed in this run. Configuration
+  defects that name an agent, tool, MCP server or provider are matched by exact name (a heuristic). Config entries are
+  filtered by role (url / key / model) to the ones that can cause the observed status.
+- `plugin._failure` stores `service_keys` in the failure dict. Checks that fail without a service (plain asserts) and the
+  "AI-Hub accepts a wrong token" check get no block.
+- Teams copy ("Copy failures for Teams", per-card "Copy for Teams", "Copy as Markdown"): the walk now keeps inline bold and
+  italic and understands lists. Bold = titles, group labels, names; regular = explanations; italic = notes (where a tool is
+  assigned, "indirect", "degrades"). Lists are flat `<ul><li>` (no nesting) for Teams' paste.
+- Verified with synthetic records and a fake configuration (scratchpad script, report written outside `results/`): nine
+  scenarios (service credential, LLM primary with failing secondary, HTTP MCP 503, Tavily key, defect naming an agent, AI-Hub
+  pat-config 503, Whisper without agents, MAV Slides degrade, security check), the same through `plugin._failure` with real
+  exception objects, and the captured clipboard HTML and Markdown of the real buttons in the browser pane.
+  Not verified: a real run on QAS, the card's look by eye (pane hidden), paste into Microsoft Teams itself, Edge, Safari.

@@ -28,7 +28,7 @@ import json
 from collections import OrderedDict, defaultdict
 from types import SimpleNamespace
 
-from . import redact, report_golden, report_theme, services, settings
+from . import impact, redact, report_golden, report_theme, services, settings
 
 AREAS = {
     "test_00_setup": "Suite setup",
@@ -330,7 +330,28 @@ def _group_causes(records, prefix: str):
     return [(g, f"{prefix}{i}") for i, g in enumerate(ordered, 1)]
 
 
-def _failed_section(groups, h, empty: str = "No failed checks.") -> str:
+def _impact_block(imp) -> str:
+    """'Affected in this configuration' (impact.py). Plain structure so the Teams copy can turn it into
+    bold group labels and names, regular explanations and italic notes: <p><b>label</b></p><ul><li>."""
+    if imp is None:
+        return ""
+    parts = []
+    for kind, entries in imp.ordered().items():
+        items = "".join(
+            f'<li><b>{e(x.name)}</b>' + (f" – {e(x.how)}" if x.how else "")
+            + (f" <i>({e(x.note)})</i>" if x.note else "") + "</li>" for x in entries)
+        parts.append(f'<p class="il"><b>{e(kind)}</b></p><ul>{items}</ul>')
+    return (f'<div class="block impact"><h4>Affected in this configuration</h4><p>{e(imp.summary)}</p>'
+            + "".join(parts) + "</div>")
+
+
+def _impact_search(imp) -> str:
+    if imp is None:
+        return ""
+    return " ".join(f"{x.name} {x.how}" for entries in imp.groups.values() for x in entries)
+
+
+def _failed_section(groups, h, empty: str = "No failed checks.", records=()) -> str:
     if not groups:
         return f'<div class="empty">{e(empty)}</div>'
     cards = []
@@ -365,8 +386,12 @@ def _failed_section(groups, h, empty: str = "No failed checks.") -> str:
             + "</td></tr>" for r in group)
         line_parts = [p for p in (f.get("service", ""), f.get("owner", "")) if p]
         effect = f.get("no_effect_reason") or f.get("impact") or ""
+        # What the failure touches in this run's configuration. Only for failures that affect the app: the
+        # others already say, in "Why AgentHubNext is not affected today", that nothing uses them.
+        imp = None if noeff else impact.analyse(group, records)
         search = " ".join([f.get("title", ""), f.get("service", ""), f.get("owner", ""), f.get("message", ""),
-                           probe["url"] if probe else "", " ".join(r.objective + " " + r.nodeid for r in group)])
+                           probe["url"] if probe else "", " ".join(r.objective + " " + r.nodeid for r in group),
+                           _impact_search(imp)])
         svcs = sorted({k for r in group for k in _svc_keys(r)})
         why = ""
         if noeff:
@@ -386,6 +411,7 @@ def _failed_section(groups, h, empty: str = "No failed checks.") -> str:
     <dl class="facts">{facts}</dl>
     <div class="block"><h4>What happened</h4><p>{e(f.get('explanation', ''))}</p></div>
     {why}
+    {_impact_block(imp)}
     {fix}
     {ev}
     <h4 class="mt">Affected checks</h4>
@@ -698,6 +724,7 @@ section>h2 .badge{font-size:12px;padding:3px 11px}
 .facts dt{color:var(--muted)}.facts dd{margin:0;word-break:break-word;color:var(--text)}
 .block{margin-top:16px}.block h4,h4.mt{margin:0 0 5px;font:600 11px var(--f);text-transform:uppercase;letter-spacing:1.3px;color:var(--muted)}
 h4.mt{margin:24px 0 10px}.block p{margin:0;max-width:80ch;text-wrap:pretty}
+.impact p.il{margin:12px 0 2px;font-size:12.5px;color:var(--text)}.impact ul{margin:2px 0 0;padding-left:20px;max-width:80ch}.impact li{margin:3px 0;line-height:1.5}.impact li i{color:var(--muted)}
 details.block>summary{cursor:pointer;font:600 13px var(--f);color:var(--accent)}
 pre{margin:8px 0 0;padding:14px 16px;background:var(--surface-2);color:var(--text);border-radius:var(--r-m);border:1px solid var(--line);font:12px/1.6 var(--fm);white-space:pre-wrap;word-break:break-word;max-height:320px;overflow:auto}
 .ev-label{margin-top:12px;font-size:12px;color:var(--muted)}
@@ -768,11 +795,21 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 function txt(el){return esc(el.textContent.replace(/\s+/g,' ').trim());}
 function cell(el){var parts=[];Array.from(el.childNodes).forEach(function(n){var t=n.textContent.replace(/\s+/g,' ').trim();if(t){parts.push(esc(t));}});return parts.join('<br>');}
 function tableHtml(t){var rows=Array.from(t.querySelectorAll('tr')).map(function(tr){return '<tr>'+Array.from(tr.children).map(function(td){var th=td.tagName==='TH';return (th?'<th>':'<td>')+cell(td)+(th?'</th>':'</td>');}).join('')+'</tr>';}).join('');return '<table border="1" cellpadding="4" cellspacing="0">'+rows+'</table>';}
+/* Inline text with its bold and italic kept - the only two styles used in the Teams copy (plus regular). */
+function inl(el){var o='';Array.from(el.childNodes).forEach(function(n){
+  if(n.nodeType===3){o+=esc(n.textContent.replace(/\s+/g,' '));}
+  else if(n.nodeType===1){var t=n.tagName;
+    if(t==='B'||t==='STRONG'){o+='<b>'+inl(n)+'</b>';}
+    else if(t==='I'||t==='EM'){o+='<i>'+inl(n)+'</i>';}
+    else if(t==='BR'){o+='<br>';}
+    else{o+=inl(n);}}});
+  return o.trim();}
 function walk(el,out){Array.from(el.children).forEach(function(c){
   if(c.tagName==='SUMMARY'||c.classList.contains('card-actions')){return;}
   if(c.tagName==='DL'){var kids=Array.from(c.children);for(var i=0;i+1<kids.length;i+=2){out.push('<p><b>'+txt(kids[i])+':</b> '+cell(kids[i+1])+'</p>');}}
   else if(c.tagName==='H4'){out.push('<p><b>'+txt(c)+'</b></p>');}
-  else if(c.tagName==='P'){out.push('<p>'+txt(c)+'</p>');}
+  else if(c.tagName==='P'){out.push('<p>'+inl(c)+'</p>');}
+  else if(c.tagName==='UL'){out.push('<ul>'+Array.from(c.children).map(function(li){return '<li>'+inl(li)+'</li>';}).join('')+'</ul>');}
   else if(c.tagName==='PRE'){out.push('<pre>'+esc(c.textContent)+'</pre>');}
   else if(c.tagName==='TABLE'){out.push(tableHtml(c));}
   else if(c.tagName==='DETAILS'){var s=c.querySelector('summary');if(s){out.push('<p><b>'+txt(s)+'</b></p>');}walk(c,out);}
@@ -808,11 +845,19 @@ function mdt(el){return el.textContent.replace(/\s+/g,' ').trim();}
 function mdCell(c){var parts=[];Array.from(c.childNodes).forEach(function(n){var t=n.textContent.replace(/\s+/g,' ').trim();if(t){parts.push(t.replace(/\|/g,'\\|'));}});return parts.join('<br>');}
 function mdTable(t){var rows=Array.from(t.querySelectorAll('tr')).map(function(tr){return '| '+Array.from(tr.children).map(mdCell).join(' | ')+' |';});
   if(rows.length>1){rows.splice(1,0,'|'+' --- |'.repeat(t.querySelector('tr').children.length));}return rows.join('\n');}
+function mdi(el){var o='';Array.from(el.childNodes).forEach(function(n){
+  if(n.nodeType===3){o+=n.textContent.replace(/\s+/g,' ');}
+  else if(n.nodeType===1){var t=n.tagName;
+    if(t==='B'||t==='STRONG'){o+='**'+mdi(n).trim()+'**';}
+    else if(t==='I'||t==='EM'){o+='_'+mdi(n).trim()+'_';}
+    else{o+=mdi(n);}}});
+  return o.replace(/\s+/g,' ').trim();}
 function mdWalk(el,out){Array.from(el.children).forEach(function(c){
   if(c.tagName==='SUMMARY'||c.classList.contains('card-actions')){return;}
   if(c.tagName==='DL'){var k=Array.from(c.children);for(var i=0;i+1<k.length;i+=2){out.push('- **'+mdt(k[i])+':** '+mdt(k[i+1]));}out.push('');}
   else if(c.tagName==='H4'){out.push('**'+mdt(c)+'**');}
-  else if(c.tagName==='P'){out.push(mdt(c),'');}
+  else if(c.tagName==='P'){out.push(mdi(c),'');}
+  else if(c.tagName==='UL'){Array.from(c.children).forEach(function(li){out.push('- '+mdi(li));});out.push('');}
   else if(c.tagName==='PRE'){out.push('```',c.textContent.replace(/\s+$/,''),'```','');}
   else if(c.tagName==='TABLE'){out.push(mdTable(c),'');}
   else if(c.tagName==='DETAILS'){var s=c.querySelector('summary');if(s){out.push('**'+mdt(s)+'**');}mdWalk(c,out);}
@@ -1026,7 +1071,7 @@ def render(records, collection_issues, meta) -> str:
     sections = "".join([
         section("failed", "Failed checks",
                 "A dependency of AgentHubNext did not behave as the application requires. Checks that failed for the same reason are grouped under one root cause, largest first. Every explanation is derived from the HTTP answer, transport error or configuration value this run observed.",
-                _failed_section(failed_groups, h), len(failed)),
+                _failed_section(failed_groups, h, records=records), len(failed)),
         section("unused", "Failed, no effect on the app",
                 "These checks failed, but on something AgentHubNext does not use today - an MCP server no agent is assigned, an endpoint no code path calls, or a setting the app ignores. Each card names the reason. They become real failures the moment the app starts using them.",
                 _failed_section(unused_groups, h, "None."), len(unused)),
